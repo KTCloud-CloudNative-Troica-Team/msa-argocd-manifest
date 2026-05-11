@@ -185,7 +185,7 @@ R-06 검증 완료:
 | R-10 | ~~이벤트 스키마 Protobuf vs Avro~~ | SPEC §9.3 | ~~SPEC v1.0에 "Avro 또는 Protobuf" 양립~~ | **해결 (2026-05-12, Phase 2)** Protobuf 단독. |
 | R-06 | ~~Spring Boot 버전 + JarLauncher 경로~~ | SPEC §8 | ~~JarLauncher 경로 확인~~ | **해결 (2026-05-12, Phase 3)** SB 3.3.0, `org.springframework.boot.loader.launch.JarLauncher` 확인 — SPEC §8 그대로 사용 |
 | R-07 | ~~`order-worker` profile 분기 코드 검증~~ | SPEC §1.1 | ~~worker profile 미존재~~ | **해결 (2026-05-12, Phase 3)** `@Profile("worker")` + `@Scheduled` 빈 신규 1개로 해소. 기존 `processAll()` 재사용 |
-| R-11 | GitHub Packages publish 실 검증 (common-libs) | Phase 2 | 로컬 publishToMavenLocal은 성공. 원격 GitHub Packages publish는 `v0.1.0` 태그 푸시 시점에 검증 필요. **Phase 3 CI는 이거에 의존** | 사용자 수행: `cd msa-common-libs && git checkout main && git pull && git tag v0.1.0 && git push origin v0.1.0` |
+| R-11 | ~~GitHub Packages publish 실 검증 (common-libs)~~ | Phase 2 | ~~v0.1.0 태그 푸시 + publish 워크플로우 동작 검증~~ | **해결 (2026-05-12, 사용자 수행)** v0.1.0 publish 성공. 4 모듈 GH Packages에 게시. Phase 3 의존성을 `0.1.0`(stable)로 bump 완료 (`c1facfd`) |
 | R-12 | Phase 3 로컬 Docker build 미검증 | Phase 3 | 본 환경에 docker 미설치. Dockerfile은 SPEC §8 모델 + bootJar 매니페스트 검증으로 간접 신뢰. 실제 검증은 CI의 `docker build` step (Phase 0 후) 또는 사용자 로컬 docker 환경 | CI 첫 docker build step 실행 시 |
 | R-13 | Kafka 직렬화 JSON → Protobuf 마이그레이션 | Phase 3+ | Phase 3 스코프 폭주 방지를 위해 기존 JSON 유지. order-service는 common-libs:events 의존만 받음. wire 마이그레이션은 inventory-service와 동시 진행이 필요 (둘 다 바꿔야 양립 가능) | Phase 4 inventory-service 작업과 묶어서 |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
