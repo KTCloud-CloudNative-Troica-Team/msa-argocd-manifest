@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform components (CRDs, operators, observability, kafka, postgres, redis, istio, cert-manager)
+  # Phase 5에서 추가되는 외부 chart repo는 필요 시 여기에 등록.
+  sourceRepos:
+    - https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    - https://prometheus-community.github.io/helm-charts
+    - https://strimzi.io/charts
+    - https://cloudnative-pg.github.io/charts
+    - https://grafana.github.io/helm-charts
+    - https://charts.jetstack.io
+    - https://istio-release.storage.googleapis.com/charts
+    - https://ot-container-kit.github.io/redis-operator
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  # 플랫폼 컴포넌트는 CRD/ClusterRole 등 cluster-scope 리소스를 만든다.
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

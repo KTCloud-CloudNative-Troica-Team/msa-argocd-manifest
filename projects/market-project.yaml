@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: market
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Market service microservices (user, product, inventory, order, notification, api-gateway)
+  sourceRepos:
+    - https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: market-dev
+    - server: https://kubernetes.default.svc
+      namespace: market-prod
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

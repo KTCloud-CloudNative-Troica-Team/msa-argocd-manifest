@@ -1,0 +1,78 @@
+# Troica common chart - default values.
+# Per-service values (applications/values/<service>/values.yaml) override these.
+# Per-env values (applications/values/<service>/values-<env>.yaml) override per-service.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ""              # values per service에서 override (예: <ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/msa/order-service)
+  tag: "latest"               # CI가 main-<sha>로 override
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Spring Boot 프로파일 - 환경별 values에서 set (예: "dev", "prod")
+springProfilesActive: ""
+
+# 일반 env vars - values per service/env에서 추가
+env: []
+# - name: SPRING_DATASOURCE_URL
+#   value: jdbc:postgresql://...
+
+# envFrom (secretRef / configMapRef) - values per service에서 추가
+envFrom: []
+# - secretRef:
+#     name: order-service-secrets
+# - configMapRef:
+#     name: order-service-config
+
+# Optional ConfigMap이 차트 내에서 생성될 때 사용할 key-value (envFrom: configMapRef와 이름 매칭)
+# 비워두면 ConfigMap 자체가 렌더링되지 않음
+configMap: {}
+# configMap:
+#   SPRING_KAFKA_BOOTSTRAP_SERVERS: market-kafka-bootstrap.kafka:9092
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+probes:
+  liveness:
+    path: /actuator/health/liveness
+    initialDelaySeconds: 30
+  readiness:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 10
+
+# Istio가 최종 mesh. 미설치 단계(Phase 1~4)에서도 sidecar inject annotation은 무해.
+istio:
+  enabled: true
+  virtualService:
+    enabled: false
+    hosts: []
+    gateways: []
+
+# order-worker처럼 동일 이미지로 별도 Deployment를 추가로 띄울 때 활성화
+worker:
+  enabled: false
+  springProfilesActive: "worker"
+  replicaCount: 1
