@@ -1,0 +1,27 @@
+# 새 서비스를 추가할 때 이 디렉토리를 복사해서 시작한다.
+#   cp -R applications/values/_template applications/values/<service-name>
+#
+# 이후 다음을 수정:
+#   - nameOverride: <service-name>
+#   - image.repository: <ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/msa/<service-name>
+#   - envFrom secretRef/configMapRef 이름 (default: <service-name>-secrets, <service-name>-config)
+#
+# 이 디렉토리(`_template`)는 ApplicationSet의 exclude 패턴(`_*`)에 의해 무시되므로
+# Application이 자동 생성되지 않는다.
+
+nameOverride: example-service
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/example-service
+  # tag는 환경별 values 에서 CI가 yq로 교체
+
+service:
+  port: 8080
+
+envFrom:
+  - secretRef:
+      name: example-service-secrets
+  - configMapRef:
+      name: example-service-config
+
+istio:
+  enabled: true

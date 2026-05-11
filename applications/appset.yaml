@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: market-services
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+              revision: main
+              directories:
+                - path: applications/values/*
+                - path: applications/values/_*       # _template 등 underscore prefix는 제외
+                  exclude: true
+          - list:
+              elements:
+                - env: dev
+                - env: prod
+  template:
+    metadata:
+      name: '{{.path.basename}}-{{.env}}'
+      labels:
+        env: '{{.env}}'
+        service: '{{.path.basename}}'
+    spec:
+      project: market
+      source:
+        repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+        targetRevision: main
+        path: applications/charts/microservice
+        helm:
+          valueFiles:
+            - ../../values/{{.path.basename}}/values.yaml
+            - ../../values/{{.path.basename}}/values-{{.env}}.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: market-{{.env}}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

@@ -92,8 +92,7 @@ msa-argocd-manifest/
 │       ├── product-service/
 │       ├── inventory-service/
 │       ├── order-service/
-│       │   ├── values.yaml
-│       │   ├── values-worker.yaml          # order-worker 분기용 (api와 별도 Deployment)
+│       │   ├── values.yaml                 # worker Deployment는 .Values.worker.enabled 플래그로 분기 (별도 values 파일 없음)
 │       │   ├── values-dev.yaml
 │       │   └── values-prod.yaml
 │       ├── notification-service/
@@ -523,17 +522,12 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
-  source:
-    repoURL: https://prometheus-community.github.io/helm-charts
-    chart: kube-prometheus-stack
-    targetRevision: 65.x.x                  # 실제 최신 stable 버전 확인 필요
-    helm:
-      valueFiles:
-        - $values/platform/30-kube-prometheus-stack/values.yaml
-  sources:                                  # multi-source 패턴
+  # ArgoCD multi-source 패턴: 외부 chart + git repo의 values를 합성.
+  # `source:` (단수)와 `sources:` (복수)는 상호배타이므로 multi-source는 반드시 `sources:`만 사용한다.
+  sources:
     - repoURL: https://prometheus-community.github.io/helm-charts
       chart: kube-prometheus-stack
-      targetRevision: 65.x.x
+      targetRevision: 65.x.x                # 실제 최신 stable 버전은 apply 직전에 검증
       helm:
         valueFiles:
           - $values/platform/30-kube-prometheus-stack/values.yaml

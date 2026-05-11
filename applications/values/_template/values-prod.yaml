@@ -1,0 +1,15 @@
+image:
+  tag: main-PLACEHOLDER          # CI(update-prod job)가 yq로 main-<sha7>로 교체 후 PR 생성
+replicaCount: 3
+springProfilesActive: "prod"
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
