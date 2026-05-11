@@ -1327,16 +1327,22 @@ dependencies {
 가장 복잡한 서비스부터. 여기서 막히는 부분이 다른 서비스에서도 막힌다.
 
 1. 새 레포 `msa-order-service` 생성
-2. 기존 모노레포에서 `order-service`, `order` 도메인 모듈, `inventory-event` 등 이전
-3. `build.gradle.kts`에 §12.2 GitHub Packages repository 추가, `common-libs` 의존성 변경
-4. `Dockerfile` 작성 (§8)
-5. `.github/workflows/ci.yml` 작성 (§7)
-6. PR 1개 만들어서 CI 검증 (빌드 + 테스트만 통과해야 함)
-7. main 머지 → ECR push 확인, Trivy 통과 확인
-8. 매니페스트 레포에 `applications/values/order-service/` 추가 (§4)
-9. CI가 매니페스트 레포의 `values-dev.yaml` 자동 commit, `values-prod.yaml`은 PR 생성하는지 확인
-10. ArgoCD UI에서 `order-service-dev` Application이 자동 생성·동기화되는지 확인
-11. K8s에 order-service Pod 2개 (api + worker) 떠야 함
+2. 기존 모노레포에서 `order-service`, `order` 도메인 모듈 이전 (`inventory-event`는 inventory 도메인 — Phase 4에서 inventory-service로)
+3. **멀티모듈 Gradle 구조 유지** (`order/` 도메인 라이브러리 + `order-service/` Spring Boot 앱) — 모노레포의 모듈 경계 그대로 사용
+4. `build.gradle.kts`에 §12.2 GitHub Packages repository 추가, `:common`/`:client-redis`/`:events` 등 monorepo 모듈 의존을 `com.troica.msa:*` 의존으로 치환
+5. **worker 분기 신규 구현** (BACKLOG R-07): `@Profile("worker") @Scheduled` 빈 1개 + `application-worker.yaml`(web off, gRPC port=-1) + `@EnableScheduling` 적용. 기존 `processAll()`은 그대로 재사용
+6. `application-{dev,prod,worker}.yaml` 분리, base는 환경변수 driven (`ORDER_DB_HOST` 등)
+7. `Dockerfile` 작성 (§8) — JarLauncher 경로는 `org.springframework.boot.loader.launch.JarLauncher` (SB 3.3.0 검증됨, R-06 해결)
+8. `.github/workflows/ci.yml` 작성 (§7) — push-gated jobs는 Phase 0 완료까지 빨갛게 떨어짐 (의도된 동작)
+9. **gradlew를 git index에 mode 100755로 커밋** (BACKLOG의 Phase 2 교훈)
+10. 로컬 검증: `./gradlew build -x test` SUCCESS, bootJar MANIFEST의 Main-Class 확인
+11. PR 1개 만들어서 CI 검증 — common-libs가 GitHub Packages에 publish되어 있어야 함 (`v0.1.0` 태그 → publish workflow)
+12. main 머지 → push trigger 동작 (Phase 0 완료 전에는 build-test까지만 성공)
+13. 매니페스트 레포에 `applications/values/order-service/{values, values-dev, values-prod}.yaml` 추가 (§4) — 별도 PR
+14. ApplicationSet 자동으로 `order-service-dev` / `order-service-prod` Application 생성
+15. (Phase 0 후) main 머지 시 CI가 매니페스트 레포 `values-dev.yaml` 자동 commit, `values-prod.yaml`은 PR 생성
+16. ArgoCD UI에서 `order-service-dev` Application Healthy + Synced
+17. K8s에 order-service Pod 2종 (`order-service` api + `order-service-worker`) 떠야 함
 
 ### Phase 4: 나머지 서비스 복제
 

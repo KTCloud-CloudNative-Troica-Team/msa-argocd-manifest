@@ -97,6 +97,61 @@ msa-common-libs/
 - `./gradlew publishToMavenLocal` SUCCESS → `~/.m2/repository/com/troica/msa/{common,client-redis,client-ses,events}/0.1.0-SNAPSHOT/` 에 12개 artifact 확인
 - ⚠ GitHub Packages publish는 `v0.1.0` 태그 푸시 시점에 실제 동작 검증 예정 (Phase 2의 마지막 단계 — 사용자 수행)
 
+### 2026-05-12 — Phase 2 후속: gradlew 100755 픽스 (branch `phase-2/initial-setup`, 추가 커밋 `fd692b5`)
+
+Phase 2 PR의 첫 CI 실행이 `./gradlew: Permission denied (exit 126)`로 실패. Windows에서 staged된 gradlew가 git index상 `100644`였기 때문. `git update-index --chmod=+x gradlew`로 `100755`로 변경 후 push → CI 통과. **이후 모든 신규 Gradle 레포는 처음부터 100755로 staging** (Phase 3 적용 완료).
+
+### 2026-05-12 — Phase 3 (앱): msa-order-service polyrepo + worker 신규 (branch `phase-3/initial-setup`)
+
+생성된 2-module Gradle 프로젝트:
+
+```
+msa-order-service/
+├── settings.gradle.kts (include order, order-service)
+├── build.gradle.kts (root, repositories: mavenLocal + GitHub Packages)
+├── gradle.properties / gradle/wrapper/* (Gradle 8.10.2)
+├── gradlew (mode 100755 from start)
+├── .github/workflows/ci.yml (SPEC §7)
+├── .gitignore, .gitattributes, .dockerignore, Dockerfile (SPEC §8)
+├── order/             (build.gradle.kts + 25 .kt 파일 from monorepo)
+│   └── src/main/kotlin/dev/ktcloud/black/order/{common,order,outbox}/
+└── order-service/
+    ├── build.gradle.kts
+    ├── src/main/proto/order.proto (gRPC 정의 — monorepo와 동일)
+    ├── src/main/resources/application{.yaml,-dev,-prod,-worker}.yaml
+    └── src/main/kotlin/dev/ktcloud/black/order/service/
+        ├── OrderServiceApplication.kt    (@EnableScheduling 추가)
+        ├── OrderGrpcControllerAdapter.kt (monorepo)
+        ├── adapter/web/inbound/OrderGrpcController.kt (monorepo)
+        └── worker/OrderInventoryRequestOutboxPoller.kt  ← NEW (R-07 해소)
+```
+
+R-07 해소 — worker 분기 구현 디테일:
+- 모노레포에 이미 `OrderInventoryRequestOutboxCommandService.processAll()`이 fetch unprocessed → Kafka publish → mark PUBLISHED 로직 완성. **유일한 결손은 주기적 호출자**였음.
+- 추가한 빈: `OrderInventoryRequestOutboxPoller` (`@Profile("worker")` + `@Scheduled(fixedDelayString = "${order.worker.outbox.poll-interval-ms:5000}", initialDelayString = "${order.worker.outbox.initial-delay-ms:10000}")`) — 1 파일, 30라인.
+- `application-worker.yaml`: `spring.main.web-application-type=none` + `grpc.server.port=-1` → worker pod에는 노출 포트 0.
+- `@EnableScheduling`은 무조건 켜되 `@Scheduled` 빈이 `@Profile("worker")` 가드 → api Deployment에선 스케줄러 작업 자체가 등록되지 않음.
+
+R-06 검증 완료:
+- 모노레포 Spring Boot 3.3.0 확인
+- bootJar `MANIFEST.MF`의 `Main-Class: org.springframework.boot.loader.launch.JarLauncher` 확인 → SPEC §8 Dockerfile 그대로 사용 가능
+
+검증 결과:
+- `./gradlew build -x test` SUCCESS (1m 24s) — kapt(QueryDSL) + Protobuf/gRPC codegen + bootJar 정상
+- bootJar MANIFEST.MF + BOOT-INF/layers.idx 검증 — layered jar OK
+- Helm 차트 `helm template` (dev + prod): api Deployment + worker Deployment + HPA(prod만) 정상 생성
+- ⚠ Docker build는 본 환경에 docker 미설치로 보류 (R-12). CI에서 검증 예정
+- ⚠ CI는 common-libs가 GitHub Packages에 publish된 후에만 통과 (R-11에 의존)
+
+### 2026-05-12 — Phase 3 (매니페스트): order-service values 추가 (branch `phase-3/order-service-values`)
+
+`applications/values/order-service/` 디렉토리 신설:
+- `values.yaml` — 공통값 (image repo, port 8002, secretRef/configMapRef 이름, istio.enabled=true, worker section 기본)
+- `values-dev.yaml` — replica 1, profile=dev, worker.enabled=true (profile dev,worker)
+- `values-prod.yaml` — replica 3, profile=prod, HPA 3-10, worker.enabled=true (profile prod,worker, replica 2)
+
+검증: `helm template ... -f values.yaml -f values-{dev,prod}.yaml` → ServiceAccount + Service + api Deployment + worker Deployment (+ prod HPA) 모두 정상.
+
 ---
 
 ## SPEC 변경 이력
@@ -110,6 +165,7 @@ msa-common-libs/
 | 2026-05-12 | §9.3 페이로드 스키마 | "Protobuf 또는 Avro" → "Protobuf only + no registry for PoC" 전면 재작성, 토픽↔proto 매핑 표 + 호환성 규칙 추가 | Phase 2 R-10 결정 |
 | 2026-05-12 | §12 msa-common-libs | 단일모듈 예시 → 멀티모듈 publish 패턴 + 빌드환경 §12.0.1 신설 | Phase 2 실제 구현 반영 |
 | 2026-05-12 | §13.2 Phase 2 작업 순서 | 단계 5개 → 9개로 확장 (멀티모듈, Protobuf codegen, Kotlin 2.1/Gradle 8.10 명시) | 실제 진행 결과 반영 |
+| 2026-05-12 | §13.3 Phase 3 작업 순서 | 단계 11개 → 17개로 확장. inventory-event 이전 항목을 제거 (해당 모듈은 inventory 도메인 — Phase 4 inventory-service로). worker 신규 구현 명시. gradlew 100755 항목 추가 | Phase 3 실제 진행 + R-07 해소 + Phase 2 교훈 반영 |
 
 ---
 
@@ -127,7 +183,11 @@ msa-common-libs/
 | R-08 | `msa-spring-boot` 아카이브 시점 | SPEC §1.3 | 모든 서비스 이전 완료 후 read-only | Phase 6 |
 | R-09 | Kotlin/Gradle 버전 충돌 (모노레포 vs common-libs) | Phase 2 | 모노레포는 Kotlin 2.3.20 + Gradle 9.0.0 선언이지만 CLI 빌드 시 `BuildUtilKt.clearJarCaches()` 미해결로 실패 → common-libs는 Kotlin 2.1.0 + Gradle 8.10.2로 진행. **소비자(서비스 레포)도 안정 조합 사용 권장** | Phase 3+ 모든 서비스 레포는 Kotlin 2.1.0 + Gradle 8.10.2 + JVM 21로 통일 |
 | R-10 | ~~이벤트 스키마 Protobuf vs Avro~~ | SPEC §9.3 | ~~SPEC v1.0에 "Avro 또는 Protobuf" 양립~~ | **해결 (2026-05-12, Phase 2)** Protobuf 단독. |
-| R-11 | GitHub Packages publish 실 검증 | Phase 2 | 로컬 publishToMavenLocal은 성공. 원격 GitHub Packages publish는 `v0.1.0` 태그 푸시 시점에 검증 필요. PR 머지 후 사용자 수행 | Phase 2 종료 직전 |
+| R-06 | ~~Spring Boot 버전 + JarLauncher 경로~~ | SPEC §8 | ~~JarLauncher 경로 확인~~ | **해결 (2026-05-12, Phase 3)** SB 3.3.0, `org.springframework.boot.loader.launch.JarLauncher` 확인 — SPEC §8 그대로 사용 |
+| R-07 | ~~`order-worker` profile 분기 코드 검증~~ | SPEC §1.1 | ~~worker profile 미존재~~ | **해결 (2026-05-12, Phase 3)** `@Profile("worker")` + `@Scheduled` 빈 신규 1개로 해소. 기존 `processAll()` 재사용 |
+| R-11 | GitHub Packages publish 실 검증 (common-libs) | Phase 2 | 로컬 publishToMavenLocal은 성공. 원격 GitHub Packages publish는 `v0.1.0` 태그 푸시 시점에 검증 필요. **Phase 3 CI는 이거에 의존** | 사용자 수행: `cd msa-common-libs && git checkout main && git pull && git tag v0.1.0 && git push origin v0.1.0` |
+| R-12 | Phase 3 로컬 Docker build 미검증 | Phase 3 | 본 환경에 docker 미설치. Dockerfile은 SPEC §8 모델 + bootJar 매니페스트 검증으로 간접 신뢰. 실제 검증은 CI의 `docker build` step (Phase 0 후) 또는 사용자 로컬 docker 환경 | CI 첫 docker build step 실행 시 |
+| R-13 | Kafka 직렬화 JSON → Protobuf 마이그레이션 | Phase 3+ | Phase 3 스코프 폭주 방지를 위해 기존 JSON 유지. order-service는 common-libs:events 의존만 받음. wire 마이그레이션은 inventory-service와 동시 진행이 필요 (둘 다 바꿔야 양립 가능) | Phase 4 inventory-service 작업과 묶어서 |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
 
 ---
@@ -143,3 +203,6 @@ msa-common-libs/
 | 2026-05-12 | `msa-common-libs`는 멀티모듈 (4개 서브모듈) | 소비자가 필요한 모듈만 의존 → ClassPath 슬림화. 사용자 명시 |
 | 2026-05-12 | 이벤트 스키마 Protobuf 단독, schema registry 미도입 (PoC) | 모노레포 gRPC가 이미 Protobuf 사용. SemVer + common-libs:events JAR로 호환 관리 |
 | 2026-05-12 | Kotlin 2.1.0 + Gradle 8.10.2 + JVM 21 (모든 서비스 레포에 동일 적용) | R-09: 모노레포 선언 버전(2.3.20/9.0.0)은 CLI에서 빌드 실패. 안정 조합으로 통일 |
+| 2026-05-12 | 새 Gradle 레포는 처음부터 `gradlew` mode 100755로 staging | Phase 2 PR이 100644로 인해 Linux CI에서 Permission denied 실패한 교훈 |
+| 2026-05-12 | `inventory-event` 모듈은 Phase 3 이전 대상 아님 — Phase 4 inventory-service로 | 패키지가 inventory 도메인 (`dev.ktcloud.black.inventory.event`). SPEC §13.3 step 2의 "등" 부분에서 제거 |
+| 2026-05-12 | order-service의 Kafka 직렬화는 일단 기존 JSON 유지. Protobuf 마이그레이션은 R-13으로 분리 | Phase 3 스코프 폭주 방지. 직렬화 변경은 producer/consumer가 동시에 바꿔야 양립 가능 → inventory-service와 묶음 |
