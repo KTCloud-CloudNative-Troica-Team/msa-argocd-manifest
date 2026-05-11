@@ -1,0 +1,21 @@
+image:
+  tag: main-PLACEHOLDER                  # CI update-prod job이 yq로 교체 후 PR 생성
+replicaCount: 3
+springProfilesActive: "prod"
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+worker:
+  enabled: true
+  springProfilesActive: "prod,worker"
+  replicaCount: 2

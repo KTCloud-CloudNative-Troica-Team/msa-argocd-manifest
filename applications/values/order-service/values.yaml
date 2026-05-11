@@ -1,0 +1,31 @@
+nameOverride: order-service
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/order-service
+  # tag는 환경별 values 에서 CI(update-dev/update-prod job)가 yq로 main-<sha7>로 교체
+
+service:
+  port: 8002          # base application.yaml의 SERVER_PORT default와 일치
+
+envFrom:
+  - secretRef:
+      name: order-service-secrets        # DB password, Slack token 등 — ExternalSecrets로 채움
+  - configMapRef:
+      name: order-service-config         # DB/Kafka host 등 비밀이 아닌 환경값
+
+probes:
+  liveness:
+    path: /healthz                       # actuator base-path: / + path-mapping.health: healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true                          # Phase 5에서 Istio 도입 후 실효. 이전에는 inject annotation 무해.
+
+# worker Deployment는 동일 이미지로 별도 띄움. dev/prod 환경별 values에서 enabled + replica 조정.
+worker:
+  enabled: false                         # 환경별 값에서 true로 켠다
+  springProfilesActive: "worker"         # api와 합쳐 "dev,worker" / "prod,worker" 로 환경값에서 보정
+  replicaCount: 1

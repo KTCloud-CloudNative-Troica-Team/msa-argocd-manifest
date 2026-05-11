@@ -1,0 +1,16 @@
+image:
+  tag: main-PLACEHOLDER                  # CI update-dev job이 yq로 main-<sha7>로 자동 교체
+replicaCount: 1
+springProfilesActive: "dev"
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 300m
+    memory: 512Mi
+
+worker:
+  enabled: true
+  springProfilesActive: "dev,worker"
+  replicaCount: 1
