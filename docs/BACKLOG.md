@@ -167,27 +167,17 @@
 
 ---
 
-## 누적 결정 사항 (D1~D7)
+## 주요 의사결정 (ADR)
 
-| # | 결정 | 의도 |
-|---|------|------|
-| D1 | auth-service → 신규 레포 `msa-auth-service`. notification은 archive | 레포 1개당 1 deployable |
-| D2 | client-redis는 JitPack (`com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2`) | 팀장님 외부 publish 운영 |
-| D3 | client-ses common-libs에서 제거 | dead code (notification 폐기와 일관) |
-| D5 | Q6/Q7 모두 우리가 Phase 4에서 구현 | 별도 Phase 분리 안 함 |
-| D6 | msa-notification-service → GitHub Archive | delete 대신 read-only 보존 |
-| D7 | order.confirmed/order.cancelled 토픽 발행 유지 (consumer 없어도) | Outbox 일관성 + 추후 subscribe 가능성 |
+자세한 컨텍스트 / 대안 / 결과는 [docs/adr/](./adr/) 디렉토리의 각 ADR 참조.
 
----
-
-## 팀장님 답변 (2026-05-12 수령) 결정 요약
-
-| # | 질문 | 답변 |
-|---|------|------|
-| Q1 | api-gateway 정체 | **(c) BFF + Spring Cloud Gateway 혼합** |
-| Q2 | user/auth/identification | **identification 폐기, auth 별도 서비스** |
-| Q3 | notification scope | **폐기 (Grafana → Slack만)** |
-| Q4 | Kafka 직렬화 | **(a) JSON 유지** |
-| Q5 | Kafka 토픽명 | **(a) SPEC 표준** (`order.pending` 등) |
-| Q6 | order state machine | **(a) 확장 — 우리 구현** |
-| Q7 | inventory Event Sourcing + Spring Batch | **(b) — 우리 구현** |
+| ADR | 결정 | 관련 R / Q / D |
+|---|---|---|
+| [ADR-0001](./adr/0001-polyrepo-with-auth-service.md) | Polyrepo 구조 + auth-service 분리 + notification 폐기 | D1, D6, Q2, Q3, R-05 |
+| [ADR-0002](./adr/0002-client-libraries-distribution.md) | client-redis는 JitPack, client-ses 제거 | D2, D3, R-20 |
+| [ADR-0003](./adr/0003-kafka-wire-format-json.md) | Kafka 직렬화 = JSON 유지 (Protobuf 마이그레이션 보류) | Q4, R-13 |
+| [ADR-0004](./adr/0004-kafka-topic-naming.md) | Kafka 토픽명 = SPEC 표준 (`order.pending` 등) | Q5 |
+| [ADR-0005](./adr/0005-api-gateway-bff-with-cloud-gateway.md) | api-gateway = BFF + Spring Cloud Gateway 혼합 | Q1, R-04, R-23 |
+| [ADR-0006](./adr/0006-order-state-machine-extension.md) | order state machine 7-state 확장 | Q6, R-21 |
+| [ADR-0007](./adr/0007-inventory-event-sourcing-batch-worker.md) | inventory = Event Sourcing + Spring Batch worker | Q7, R-22 |
+| [ADR-0008](./adr/0008-order-terminal-events.md) | order.confirmed/cancelled 토픽 발행 유지 | D7 |
