@@ -13,60 +13,62 @@
 - [x] 신규 5개 빈 레포(LICENSE+README) 생성됨 (`msa-user-service`, `msa-product-service`, `msa-inventory-service`, `msa-notification-service`, `msa-api-gateway`)
 - [ ] 팀장님 P0 질문 3개(Q1~Q3) 답변 받음 — BACKLOG의 "팀장님 보류 사항" 참조
 
-> P0 답변 미수령이면 진행 가능한 서비스: **product-service**(질문 무관), 그 다음 **inventory-service**(Q4/Q5/Q7 영향)는 답 받은 후.
+> 팀장님 답변 (2026-05-12) 받은 후 매핑 갱신됨. 자세한 결정은 BACKLOG 참조.
 
 ---
 
-## 1. 모노레포 → 폴리레포 매핑
+## 1. 모노레포 → 폴리레포 매핑 (v2)
 
 | 폴리레포 | 가져갈 모노레포 모듈 | deployable app? | 비고 |
 |----------|---------------------|---------------|------|
-| `msa-product-service`   | `product` + `product-service` | ✅ `ProductServiceApplication` 존재 | 단순 추출. 가장 빠름 |
-| `msa-inventory-service` | `inventory` + `inventory-service` + `inventory-event` | ✅ `InventoryServiceApplication` 존재 | Redis 사용 + Outbox(`inventory-event`) + Kafka. Q4/Q5/Q7 영향 |
-| `msa-user-service`      | `user` + `auth` + `identification` | ❌ **모노레포에 없음 — 신규 패키징** | Q2 답에 따라 분리 가능성. `@SpringBootApplication` 작성 필요 |
-| `msa-api-gateway`       | `user-api-gateway` | ✅ `UserApiGatewayApplication` 존재 | Q1 답에 따라 BFF 유지 / SC Gateway 리라이트 |
-| `msa-notification-service` | (그린필드) | ❌ 코드 0줄 | Phase 0 후. SPEC §9 참조해서 신규 구현 |
+| `msa-product-service`   | `product` + `product-service` | ✅ Phase 4 첫 PoC 완료 | — |
+| `msa-order-service` (이미 폴리레포) | — | ✅ Phase 3 완료 | **Q5 토픽명 정렬 + Q6 state machine 확장** 후속 작업 |
+| `msa-inventory-service` | `inventory` + `inventory-service` + `inventory-event` | ✅ `InventoryServiceApplication` 존재 | Redis(**JitPack**) + Kafka + **Q5 토픽명** + **Q7 Event Sourcing + Spring Batch worker** |
+| `msa-user-service`      | `user/` (단독) | ❌ **신규 패키징 필요** | identification 폐기됨. `@SpringBootApplication` + REST/gRPC adapter 작성 |
+| `msa-auth-service` (신규 레포 D1) | `auth/` + `auth-service/` | ✅ `AuthServiceApplication` 존재 | gRPC `AuthService.{SignUp, SignIn, CheckValidity}`. PostgreSQL `auth_db`:7007 + Redis :7006 |
+| `msa-api-gateway`       | `user-api-gateway` | ✅ `UserApiGatewayApplication` 존재 | **Q1 (c) BFF + SC Gateway 혼합**. `JwtHeaderCheckFilter` 포함. Spring Cloud BOM 2025.0.2 |
+| ~~`msa-notification-service`~~ | (폐기 D6 archive) | — | Q3 결정: 시스템 알림은 Prometheus → AlertManager → Slack 경로 |
 
 ---
 
-## 2. 포트 / DB / 외부 의존성 매트릭스
+## 2. 포트 / DB / 외부 의존성 매트릭스 (v2)
 
 ### 2.1 네트워크 포트
 
-| 서비스 | HTTP/REST | gRPC | 비고 |
-|--------|-----------|------|------|
-| product-service       | 8001 | 9001 | |
-| order-service         | 8002 | 9002 | worker pod는 `web-application-type=none` + `grpc.server.port=-1` (포트 없음) |
-| inventory-service     | 8003 | 9003 | |
-| user-service          | **8004** | **9004 또는 미사용** | 신규. Q1/Q2에 따라 gRPC 필요 여부 결정 |
-| notification-service  | **8005** | - | Kafka consumer 전용. HTTP는 actuator만 |
-| api-gateway           | 8100 | - | 외부 진입점 |
+| 서비스 | HTTP | gRPC | DB | Redis | 비고 |
+|--------|------|------|----|----|------|
+| product-service   | 8001 | 9001 | 7001 (product_db) | - | |
+| order-service     | 8002 | 9002 | 7002 (order_db)   | - | worker pod (Outbox poller) — 포트 없음 |
+| inventory-service | 8003 | 9003 | 7004 (inventory_db) | 7005 (inventory) | **+worker pod (Spring Batch projection)** |
+| user-service      | 8004 | 9004 | (별도 user_db 신규) | - | gRPC 노출 — auth-service가 `:user` 라이브러리로 사용 |
+| auth-service      | 8005 | 9005 | 7007 (auth_db, 신규) | 7006 (auth-refresh-token, 신규) | 8005는 ~~notification~~ → auth로 재할당 |
+| api-gateway       | 8100 | -    | - | - | 외부 진입점 |
 
-> 8000번대 차감 / 9000번대는 gRPC. 모노레포 컨벤션 그대로 + user/notification 신규 할당.
+### 2.2 외부 의존성
 
-### 2.2 PostgreSQL / Redis / Kafka / 외부 API
+| 서비스 | PostgreSQL | Redis | Kafka |
+|--------|-----------|-------|-------|
+| product-service   | ✅ product_db | - | - |
+| order-service     | ✅ order_db   | - | producer(`order.pending`, `order.confirmed`, `order.cancelled`) + consumer(`order.inventory-reserved`) |
+| inventory-service | ✅ inventory_db | ✅ inventory-redis | consumer(`order.pending`) + producer(`order.inventory-reserved`) |
+| user-service      | ✅ user_db    | - | - |
+| auth-service      | ✅ auth_db    | ✅ auth-redis | - |
+| api-gateway       | - | - | - |
 
-| 서비스 | PostgreSQL DB | Redis | Kafka | SES | Slack |
-|--------|--------------|-------|-------|-----|-------|
-| product-service       | `product_db` | - | - | - | - |
-| order-service         | `order_db` | - | producer + consumer | - | - |
-| inventory-service     | `inventory_db` | `inventory-service-redis` (require pass) | producer + consumer | - | - |
-| user-service          | `user_db` (신규) | `user-service-redis` (신규, auth refresh-token 캐시) | - | - | - |
-| notification-service  | `notification_db` (신규, 멱등 테이블) | - | consumer만 | ✅ | ✅ |
-| api-gateway           | - | - | - | - | - |
+> 모노레포 `container-compose.yaml`은 product/order/inventory + Kafka + inventory-redis만 정의. user/auth는 신규 추가 필요 (각 서비스 README에 로컬 docker-compose snippet 첨부 권장).
 
-> 모노레포 `container-compose.yaml`은 product/order/inventory + Kafka + inventory-redis만 정의. user/notification은 신규 추가 필요.
+### 2.3 공용 라이브러리 의존성 (common-libs v0.3.0 기준)
 
-### 2.3 GitHub Packages 의존성 (common-libs 모듈 단위)
+| 서비스 | `:common` | `:events` | JitPack client-redis |
+|--------|:---------:|:---------:|:--------------------:|
+| product-service   | ✅ | - | - |
+| order-service     | ✅ | (코드 양립용 보유) | - |
+| inventory-service | ✅ | (코드 양립용 보유) | ✅ |
+| user-service      | ✅ | - | - |
+| auth-service      | ✅ | - | ✅ (refresh-token 캐시) |
+| api-gateway       | (간접) | - | - |
 
-| 서비스 | `:common` | `:client-redis` | `:client-ses` | `:events` |
-|--------|:---------:|:---------------:|:-------------:|:---------:|
-| product-service       | ✅ | - | - | - |
-| order-service         | ✅ | (간접) | - | ✅ |
-| inventory-service     | ✅ | ✅ | - | ✅ |
-| user-service          | ✅ | ✅ (auth refresh-token 캐시) | - | - |
-| notification-service  | ✅ | ✅ (멱등 처리) | ✅ | ✅ |
-| api-gateway           | (간접) | - | - | - |
+> `client-ses`, `client-redis` (common-libs)는 v0.3.0에서 제거. JitPack은 `com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2`.
 
 ---
 
@@ -250,85 +252,111 @@ ApplicationSet이 자동으로 `<service-name>-dev`, `<service-name>-prod` Appli
 
 ---
 
-## 4. 서비스별 빠른 참조 카드
+## 4. 서비스별 빠른 참조 카드 (v2 — 결정 반영)
 
-### 4.1 msa-product-service
+### 4.1 msa-product-service ✅ 완료
 
-- **난이도**: 낮음 (단순 추출)
-- **예상 작업**: 30분
-- **포트**: 8001 (HTTP) / 9001 (gRPC)
-- **DB**: `product_db`
-- **Kafka/Redis**: 미사용
-- **모노레포 모듈**: `product/` + `product-service/`
-- **의존**: `com.troica.msa:common:0.2.0`
-- **막힐 가능성**: 거의 없음. order-service 패턴 복붙
+Phase 4 첫 PoC로 머지됨. 단순 추출 패턴 검증.
 
-### 4.2 msa-inventory-service
+### 4.2 msa-order-service (Q5 + Q6 후속)
 
-- **난이도**: 중 (Outbox + Redis 분산락 + Kafka)
-- **예상 작업**: 1~2시간 (Q4 Protobuf 마이그레이션 포함 시)
-- **포트**: 8003 (HTTP) / 9003 (gRPC)
+- **난이도**: 중
+- **예상 작업**: 1~2시간
+- **이미 폴리레포에 있음** (Phase 3). 후속 작업으로 변경:
+  - **Q5 토픽명**: `inventory-reserve-request-topic` → `order.pending`, `inventory-reserved-result-topic` → `order.inventory-reserved`
+    - `application.yaml`의 `spring.kafka.topic.*` 키 + 사용처 (`@Value`, Publisher/Listener) 수정
+  - **Q6 state machine 확장**: `OrderLineItemStatus` enum에 PAYMENT_PENDING / PAID / SHIPPING / SHIPPED / CONFIRMED / CANCELLED 추가. 상태 전이 시 `order.confirmed`/`order.cancelled` 이벤트 발행 (Outbox 패턴 일관성 — 새 Outbox 테이블 또는 기존 `OrderInventoryRequestOutbox`를 일반화)
+- **공통-libs**: `common:0.3.0` 만. `events:0.3.0`은 코드 양립용으로 보유 (wire는 JSON)
+- **막힐 가능성**: state machine 전이 검증 — `OrderLineItemStatus.checkTransitive()`에 새 상태 추가 필요
+
+### 4.3 msa-inventory-service (Q5 + Q7)
+
+- **난이도**: **상** (Event Sourcing + Spring Batch 신규)
+- **예상 작업**: 반나절+
+- **포트**: 8003 (HTTP) / 9003 (gRPC) + worker pod (포트 없음)
 - **DB**: `inventory_db`
 - **Redis**: `inventory-service-redis` (password 필요)
-- **Kafka**: producer + consumer (Q5 토픽명 결정에 따라)
+- **Kafka**: consumer `order.pending` + producer `order.inventory-reserved` (Q5)
 - **모노레포 모듈**: `inventory/` + `inventory-service/` + `inventory-event/`
-- **의존**: `com.troica.msa:common:0.2.0` + `client-redis:0.2.0` + `events:0.2.0`
-- **막힐 가능성**: Protobuf 마이그레이션 — order-service 측 코드도 동시 변경 필요. **양쪽 PR set으로 진행**
-- **Q4 답이 (b)면 추가 작업**: 양쪽 KafkaConfig.kt + Mapper 2개씩 + Message 클래스 삭제 + application.yaml의 serializer 설정
+- **의존**:
+  - `com.troica.msa:common:0.3.0`
+  - **JitPack** `com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2` (D2)
+  - settings.gradle.kts에 `maven { url = uri("https://jitpack.io") }` 추가
+- **신규 작업 (Q7)**:
+  - `inventory-event`를 append-only 이벤트 스토어로 (현재는 Outbox 형태 — 처리 완료 마킹 제거하고 모든 이벤트 영구 보관)
+  - **Spring Batch worker** 분기 (`SPRING_PROFILES_ACTIVE=worker`) + 별도 K8s Deployment
+  - `@EnableBatchProcessing` + Job/Step 정의 (이벤트 스토어 → projection 또는 read model 갱신)
+  - `application-worker.yaml`: web off, gRPC port=-1, Spring Batch Job Launcher만 동작
 
-### 4.3 msa-user-service
+### 4.4 msa-user-service (단순 추출 + 신규 패키징)
 
-- **난이도**: 중~상 (deployable app 신규 작성)
-- **예상 작업**: 1시간 (Q2 (a) 통합) ~ 2시간 (Q2 (b) 분리)
-- **포트**: 8004 (HTTP) / 9004 (gRPC 필요한지 결정)
+- **난이도**: 중 (Q2 결정으로 단순화 — identification 폐기)
+- **예상 작업**: ~1시간
+- **포트**: 8004 (HTTP) / 9004 (gRPC) 
 - **DB**: `user_db` (신규)
-- **Redis**: `user-service-redis` (신규, auth refresh-token 캐시용)
-- **모노레포 모듈**: `user/` + `auth/` + `identification/`
-- **의존**: `com.troica.msa:common:0.2.0` + `client-redis:0.2.0`
-- **핵심 작업**: `@SpringBootApplication` 클래스 + `application.yaml` **신규 작성**, AuthRestController/UserRestController/ExternalIdentificationRestController 인터페이스에 `@RestController` 어노테이션 + 구현 어댑터 클래스 추가 (모노레포에는 인터페이스만)
-- **Q3 JWT 검증 강제 활성화**: api-gateway 측 작업. 본 서비스는 그저 발급/리프레시 엔드포인트만 제공
+- **모노레포 모듈**: `user/` **단독** (identification은 모노레포에서 제거됨, auth는 별도 auth-service로)
+- **의존**: `com.troica.msa:common:0.3.0`
+- **핵심 작업**: `@SpringBootApplication` 클래스 + `application.yaml` **신규 작성**. UserRestController @RestController adapter 작성. user 도메인의 password encoder 빈 활용 (`SecurityConfig`에 추가됨)
+- **gRPC**: auth-service가 `:user` 라이브러리를 임포트하지만, 향후 service-to-service 통신을 위해 user-service도 gRPC 서버 노출 권장
 
-### 4.4 msa-api-gateway
+### 4.5 msa-auth-service (신규 레포 D1 — 신규 추출)
 
-- **난이도**: Q1 결정에 따라
-  - **(a) BFF 유지**: 낮음 (~30분 단순 추출)
-  - **(b) SC Gateway 리라이트**: 중~상 (~수 시간, routes 설계)
-  - **(c) 둘 다**: 별도 서비스로 분리
-- **포트**: 8100 (HTTP)
-- **DB / Redis / Kafka**: 미사용
+- **난이도**: 중 (모노레포 코드 거의 그대로)
+- **예상 작업**: ~1시간
+- **포트**: 8005 (HTTP) / 9005 (gRPC)
+- **DB**: `auth_db` (신규)
+- **Redis**: `auth-service-redis` (신규, refresh token 캐시)
+- **모노레포 모듈**: `auth/` + `auth-service/`
+- **의존**:
+  - `com.troica.msa:common:0.3.0`
+  - **JitPack** client-redis (refresh-token 캐시용)
+  - jjwt-api 0.12.6 + jjwt-impl + jjwt-jackson
+  - `auth-service`는 내부적으로 `:user` 도메인도 의존 (SignUp 시 user 생성)
+- **핵심 작업**: 모노레포 패턴 그대로 폴리레포 이전. JWT secret은 ExternalSecrets로 주입 (Phase 0 후 정식 등록)
+- **gRPC**: `AuthService.{SignUp, SignIn, CheckValidity}` 노출 — api-gateway의 JwtHeaderCheckFilter가 호출
+
+### 4.6 msa-api-gateway (Q1 (c) 혼합)
+
+- **난이도**: 중~상 (혼합 패턴 + JWT 필터 + Spring Cloud 신규 도입)
+- **예상 작업**: 2~3시간
+- **포트**: 8100 (HTTP), 외부 진입점
 - **모노레포 모듈**: `user-api-gateway/`
-- **의존**: Spring Cloud 2025.0.2 BOM (api-gateway 한정)
-- **Q1 (b) 선택 시 추가 작업**:
-  - `spring-cloud-gateway-server-webflux` 아티팩트 명시 (legacy `spring-cloud-starter-gateway` 가능하나 비추)
-  - `application.yaml`에 `spring.cloud.gateway.routes` 정의 (product/order/inventory/user-service로 라우팅)
-  - JWT 인증 필터 작성 (Q3 답에 따라 강제 vs permitAll)
-  - Rate Limit 필터 (Redis token bucket)
-  - BFF의 REST/gRPC 변환 코드는 폐기 또는 별도 서비스로 분리
+- **의존**:
+  - `com.troica.msa:common:0.3.0`
+  - **Spring Cloud BOM 2025.0.2** (Northfields)
+  - `spring-cloud-gateway-server-webflux` (명시 아티팩트)
+  - `grpc-client-spring-boot-starter` (auth-service / product-service / order-service / inventory-service / user-service 호출)
+  - jjwt 라이브러리 (header parse 용도, validation은 auth-service에 위임)
+- **혼합 패턴 (Q1 (c))**:
+  - 기존 BFF REST controllers (UserInventoryApiGatewayRestController 등) 그대로 보존
+  - **신규 추가**: `spring.cloud.gateway.routes`에 product-service / order-service / inventory-service / user-service / auth-service로의 reverse-proxy 라우팅 (BFF 미경유 path)
+  - `JwtHeaderCheckFilter`로 `/api/v1/orders/**` 등 보호 경로 검증 — auth-service gRPC `CheckValidity` 호출 (모노레포 코드 그대로)
 
-### 4.5 msa-notification-service
+### 4.x ~~msa-notification-service~~ (폐기)
 
-- **난이도**: 상 (그린필드)
-- **예상 작업**: 반나절+
-- **Phase 0 의존**: SES/Slack credentials 필요 → **Phase 0 후로 보류 결정됨**
-- **포트**: 8005 (HTTP, actuator만)
-- **DB**: `notification_db` (신규, 멱등성 테이블)
-- **Kafka consumer**: `order.confirmed`, `order.cancelled`, `notification.requested` (Q5 답에 따라 토픽명)
-- **모노레포 모듈**: 없음. **그린필드**
-- **의존**: `com.troica.msa:common:0.2.0` + `client-redis:0.2.0` + `client-ses:0.2.0` + `events:0.2.0`
-- **사전 결정 필요** (Q8): channel 분기, 멱등성 키 저장소, DLQ 토픽명
+- D6 결정: GitHub Settings에서 Archive
+- 시스템 알림은 Prometheus → AlertManager → Slack 경로 (Phase 5 platform)
 
 ---
 
-## 5. 진행 순서 권장
+## 5. 진행 순서 권장 (v2)
 
-P0 답변 미수령 상태에서 시작 가능:
-1. **product-service** — 결정 무관, 패턴 검증용
-2. (P0 답 받은 후) **inventory-service** — Protobuf 마이그레이션과 묶음 (order-service 변경도 동시)
-3. **user-service** — Q2 답 받은 후 통합/분리 결정
-4. **api-gateway** — Q1 답 받은 후 BFF/SC Gateway 결정
-5. **notification-service** — Phase 0 완료 후
+병렬 가능 그룹:
 
-각 서비스 PR set은 (a) 서비스 레포 PR 1개 + (b) 매니페스트 레포 values PR 1개 = 2 PR. 5개 서비스 × 2 = 10 PR 예상.
+**그룹 A — 독립 작업 (병렬 시작 가능)**
+- ① 본 문서 PR (이 PR)
+- ② common-libs v0.3.0 (client-redis/client-ses 제거)
+- ③ order-service Q5 토픽명 + Q6 state machine 확장
+
+**그룹 B — 사용자 GitHub 액션 후**
+- ④ inventory-service Phase 4 + Q5 + Q7 (Event Sourcing + Spring Batch)
+- ⑤ user-service Phase 4
+- ⑥ msa-auth-service Phase 4 (신규 레포 D1 생성 후)
+
+**그룹 C — 의존성 있음 (순차)**
+- ⑦ api-gateway Phase 4 (⑥ auth-service 머지 후 — gRPC client 대상)
+
+각 서비스 PR set = 서비스 레포 PR 1개 + 매니페스트 레포 values PR 1개. 총 12 PR 예상.
 
 ---
 
