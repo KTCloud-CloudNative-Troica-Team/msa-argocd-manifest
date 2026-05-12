@@ -1,5 +1,5 @@
 image:
-  tag: main-PLACEHOLDER                    # CI update-dev job이 yq로 자동 교체
+  tag: main-ee1879d # CI update-dev job이 yq로 자동 교체
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
