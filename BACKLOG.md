@@ -143,6 +143,43 @@ R-06 검증 완료:
 - ⚠ Docker build는 본 환경에 docker 미설치로 보류 (R-12). CI에서 검증 예정
 - ⚠ CI는 common-libs가 GitHub Packages에 publish된 후에만 통과 (R-11에 의존)
 
+### 2026-05-12 — Tech stack audit + Spring Boot 3.3.0 → 3.5.13 upgrade
+
+기술 스택 사진 (`05 — 기술 스택 / 버전 및 라이브러리 검토`) 표준과 코드 베이스 정합성 감사. 사진은 **Spring Boot 3.5.x**를 현행 표준으로 명시했으나 Phase 2/3에서 모노레포 카피로 인해 **3.3.0**이 들어갔음 — 발견 + 수정.
+
+**감사 결과 (CVE/EOL)**
+- Spring Boot 3.3.x: OSS support 2025-06-30 EOL ✕ (≒1년 EOL 상태로 사용 중이었음)
+- Spring Boot 3.3.0 영향 CVE:
+  - **CVE-2025-22235** (HIGH, CVSS 7.3) — `EndpointRequest.to()` actuator matcher 결함. 3.3.0-3.3.10 영향, 3.3.11에서 fix
+  - **CVE-2025-24813** — 번들 Tomcat 10.1.24의 file-based session 역직렬화
+  - **CVE-2025-66614 / CVE-2026-24733** — Tomcat 10.1.50 미만 영향
+- 그 외 점검: Java 21 ✅ / Redisson 3.27.2는 CVE-2023-42809 fix 포함(3.22+)이지만 ~2년 구버전 / net.devh:grpc-server-spring-boot-starter 3.1.0 SB 3.2.4 컴파일 (호환 검증 필요) / Trivy v0.36.0 ✅
+
+**선택지**: Spring Cloud Gateway WebFlux 호환성 검증 — 팀장님이 "맞는 게 없다"고 한 부분 확인:
+- **Spring Cloud 2025.0.2 (Northfields, 2026-04-02 release)** = Spring Boot 3.5.13 공식 테스트 짝. **존재함.**
+- Spring Cloud 2025.1.0 (Oakwood)은 **Spring Boot 4.x 전용** — Phase 4 시점에 잘못 보면 함정
+- Spring Cloud 2024.0.x = SB 3.4.x까지만 — 3.5에 못 씀
+
+**적용 (커밋)**
+- `msa-common-libs` (branch `upgrade/spring-boot-3.5`, commit `63d2db1`): SB BOM 3.3.0 → 3.5.13. version 0.1.0-SNAPSHOT → 0.2.0-SNAPSHOT
+- `msa-order-service` (branch `upgrade/spring-boot-3.5`, commit `a761659`): SB plugin + BOM 3.3.0 → 3.5.13, common-libs deps 0.1.0 → 0.2.0-SNAPSHOT
+
+**Kotlin/Gradle 동시 upgrade 시도 → 후퇴 (R-16)**
+- 시도: Kotlin 2.1.0 → **2.3.21** + Gradle 8.10.2 → **9.5.0**
+- 실패: `BuildUtilKt.clearJarCaches()` `NoClassDefFoundError` (`ClasspathEntrySnapshotter$Settings` 누락) — Kotlin 2.3.x Build Tools API JAR 내부 클래스 참조 깨짐. JetBrains upstream 버그
+- 워크어라운드 시도 (모두 실패): `kotlin.compiler.runViaBuildToolsApi=false`, `kotlin.incremental.useClasspathSnapshot=false`, `kotlin.incremental=false`
+- **결정**: SB 3.5.13만 살리고 toolchain은 Kotlin 2.1.0 + Gradle 8.10.2 유지. JetBrains가 수정하면 재시도
+
+**검증 결과**
+- common-libs `./gradlew build` SUCCESS, `publishToMavenLocal` → `~/.m2/.../com/troica/msa/*/0.2.0-SNAPSHOT/` 12 artifact
+- order-service `./gradlew build -x test` SUCCESS (1m 35s)
+- bootJar MANIFEST: `Spring-Boot-Version: 3.5.13`, `Main-Class: org.springframework.boot.loader.launch.JarLauncher` 그대로 — Dockerfile 변경 불필요
+- net.devh:grpc-server-spring-boot-starter:3.1.0 compile + link OK against SB 3.5.13 — 런타임 smoke test는 클러스터에서
+
+**후속 필요 (선결)**
+- 사용자: msa-common-libs 측 PR 머지 후 `git tag v0.2.0 && git push origin v0.2.0` → GH Packages publish
+- 그 후 별도 PR: msa-order-service에서 common-libs 의존 `0.2.0-SNAPSHOT` → `0.2.0`
+
 ### 2026-05-12 — Phase 3 (매니페스트): order-service values 추가 (branch `phase-3/order-service-values`)
 
 `applications/values/order-service/` 디렉토리 신설:
@@ -167,6 +204,8 @@ R-06 검증 완료:
 | 2026-05-12 | §13.2 Phase 2 작업 순서 | 단계 5개 → 9개로 확장 (멀티모듈, Protobuf codegen, Kotlin 2.1/Gradle 8.10 명시) | 실제 진행 결과 반영 |
 | 2026-05-12 | §13.3 Phase 3 작업 순서 | 단계 11개 → 17개로 확장. inventory-event 이전 항목을 제거 (해당 모듈은 inventory 도메인 — Phase 4 inventory-service로). worker 신규 구현 명시. gradlew 100755 항목 추가 | Phase 3 실제 진행 + R-07 해소 + Phase 2 교훈 반영 |
 | 2026-05-12 | §7 CI workflow Trivy 버전 | `aquasecurity/trivy-action@0.24.0` → `@v0.36.0` + 공급망 사고 주석 | R-14: 0.24.0 미존재 + 0.0.1~0.34.2 태그는 2026-03 공급망 사고로 compromised. post-incident 태그 핀 |
+| 2026-05-12 | §0 결정표 + §12.0.1 | Spring Boot `3.3.0` → `3.5.13` (BOM). 빌드 toolchain / Spring Cloud 행 신설 (SC 2025.0.2 Northfields 명시) | 사진 표준 정렬 + Spring Boot 3.3 EOL + CVE-2025-22235 + Phase 4 api-gateway 호환성 |
+| 2026-05-12 | §13.3 step 7 | "SB 3.3.0 검증됨" → "SB 3.5.13 검증됨" (JarLauncher 경로 동일) | upgrade 결과 반영 |
 
 ---
 
@@ -191,6 +230,9 @@ R-06 검증 완료:
 | R-13 | Kafka 직렬화 JSON → Protobuf 마이그레이션 | Phase 3+ | Phase 3 스코프 폭주 방지를 위해 기존 JSON 유지. order-service는 common-libs:events 의존만 받음. wire 마이그레이션은 inventory-service와 동시 진행이 필요 (둘 다 바꿔야 양립 가능) | Phase 4 inventory-service 작업과 묶어서 |
 | R-14 | ~~SPEC §7 `aquasecurity/trivy-action@0.24.0` 미존재 + 보안 사고 범위~~ | SPEC §7, 모든 서비스 CI | ~~버전 미존재로 "Prepare all required actions"에서 실패 (`if` 조건 평가 전이라 conditional step도 영향). 게다가 2026-03-19 trivy-action 공급망 사고로 0.0.1~0.34.2 태그는 compromised~~ | **해결 (2026-05-12)** SPEC §7 + msa-order-service ci.yml을 `v0.36.0` (post-incident, v-prefix)로 핀. 추가 보안 강화 = SHA pin + Dependabot은 backlog 보류 |
 | R-15 | GitHub Actions 핀 정책 (SHA + Dependabot) | 보안 강화 | 현재 mutable tag 핀. 공급망 공격에 취약. 모든 actions를 commit SHA로 핀 + Dependabot/Renovate 도입 권장 | Phase 6 또는 별도 보안 트랙 |
+| R-16 | Kotlin 2.3.x + Gradle 9.x `BuildUtilKt.clearJarCaches()` 버그 | toolchain | Kotlin 2.3.20/2.3.21 + Gradle 9.0/9.5 모두 `ClasspathEntrySnapshotter$Settings` `NoClassDefFoundError`. 워크어라운드 3종(`runViaBuildToolsApi=false`, `useClasspathSnapshot=false`, `incremental=false`) 전부 무효. JetBrains upstream 이슈로 보임 | Kotlin 2.4.x 또는 2.3.22+ release 후 재시도. 그 전에는 2.1.0 + 8.10.2 고정 |
+| R-17 | common-libs v0.2.0 publish 후 order-service deps 재bump | upgrade 후속 | order-service는 현재 `com.troica.msa:*:0.2.0-SNAPSHOT`. common-libs v0.2.0 태그 push로 GH Packages publish 후 별도 PR로 `:0.2.0`으로 변경 (Phase 3 v0.1.0 때와 동일 패턴) | 사용자 v0.2.0 태그 push 후 |
+| R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 | 일정 | 현재 3.5.13 사용. 6월 30일 이후 보안 패치 OSS 미제공. Phase 6 마무리 후 3.6.x/4.0 마이그레이션 검토 (Spring Cloud 2025.1.x = Boot 4 라인) | Phase 6 종료 시점 또는 EOL 2주 전 |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
 
 ---
@@ -209,3 +251,5 @@ R-06 검증 완료:
 | 2026-05-12 | 새 Gradle 레포는 처음부터 `gradlew` mode 100755로 staging | Phase 2 PR이 100644로 인해 Linux CI에서 Permission denied 실패한 교훈 |
 | 2026-05-12 | `inventory-event` 모듈은 Phase 3 이전 대상 아님 — Phase 4 inventory-service로 | 패키지가 inventory 도메인 (`dev.ktcloud.black.inventory.event`). SPEC §13.3 step 2의 "등" 부분에서 제거 |
 | 2026-05-12 | order-service의 Kafka 직렬화는 일단 기존 JSON 유지. Protobuf 마이그레이션은 R-13으로 분리 | Phase 3 스코프 폭주 방지. 직렬화 변경은 producer/consumer가 동시에 바꿔야 양립 가능 → inventory-service와 묶음 |
+| 2026-05-12 | Spring Boot 3.5.13 표준 + Spring Cloud 2025.0.2 (Phase 4) | 사진 "기술 스택" 슬라이드 표준 + 3.3 EOL + CVE-2025-22235 (HIGH 7.3). Phase 4 api-gateway가 SC Gateway WebFlux 필요 — 2025.0.2가 SB 3.5.x 공식 짝 |
+| 2026-05-12 | Kotlin/Gradle은 2.1.0 + 8.10.2 고정 유지 (Kotlin 2.3.x 시도 → 실패 후 후퇴) | R-16: JetBrains Build Tools API JAR 버그. SB 3.5.13는 Kotlin 2.1.0과 정상 작동 (SB 3.5의 BOM-managed Kotlin이 2.1.x 라인) |
