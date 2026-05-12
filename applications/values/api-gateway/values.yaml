@@ -1,0 +1,32 @@
+nameOverride: api-gateway
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/api-gateway
+
+service:
+  port: 8100          # SPEC §1.4 — 외부 진입점
+
+envFrom:
+  - secretRef:
+      name: api-gateway-secrets
+  - configMapRef:
+      name: api-gateway-config       # gRPC backend addresses, Gateway routes URI 등
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true
+  # Phase 5에서 외부 도메인 매핑 시 VirtualService.enabled=true + hosts/gateways 추가
+  virtualService:
+    enabled: false
+    hosts: []
+    gateways: []
+
+worker:
+  enabled: false
