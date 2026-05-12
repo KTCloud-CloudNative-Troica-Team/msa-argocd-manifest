@@ -60,6 +60,21 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 
 > **archive 처리**: 기존 `msa-spring-boot` 모노레포는 마이그레이션 완료 후 read-only로 보존 (delete 금지, 이력 보존용).
 
+### 1.4 포트 할당
+
+8000번대 = HTTP/REST + Actuator, 9000번대 = gRPC. 클러스터 내부는 K8s Service로 추상화되지만, 로컬 개발 / 디버그 시 일관성 위해 명시.
+
+| 서비스 | HTTP | gRPC | 비고 |
+|--------|------|------|------|
+| product-service       | 8001 | 9001 | |
+| order-service         | 8002 | 9002 | worker pod는 `web-application-type=none` + `grpc.server.port=-1` (포트 없음) |
+| inventory-service     | 8003 | 9003 | |
+| user-service          | 8004 | 9004 | gRPC 필요 여부 Q1/Q2 결정 의존 |
+| notification-service  | 8005 | - | Kafka consumer 전용, HTTP는 actuator만 |
+| api-gateway           | 8100 | - | 외부 진입점 |
+
+자세한 부트스트랩 절차는 [`PHASE_4_RUNBOOK.md`](./PHASE_4_RUNBOOK.md) 참조.
+
 ---
 
 ## 2. 매니페스트 레포 디렉토리 구조 (`msa-argocd-manifest`)
