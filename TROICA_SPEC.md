@@ -623,9 +623,12 @@ jobs:
           load: true
           tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
 
+      # 주의: 2026-03-19 aquasecurity/trivy-action 공급망 사고로 0.0.1~0.34.2 태그는 모두 compromised.
+      # 사고 후 새 태그 컨벤션은 `v` prefix. v0.35.0 부터 안전. 본 PoC는 v0.36.0(2026-04-22) 핀.
+      # 보안 강화 시 commit SHA 핀 + Dependabot/Renovate 도입 권장.
       - name: Trivy scan
         if: github.event_name == 'push'
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
           format: table
