@@ -1,12 +1,16 @@
-# 단일 부트스트랩 진입점.
-# `kubectl apply -f bootstrap/root-app.yaml` 한 번으로 다음을 sync한다 (sync-wave 순):
-#   wave -10 : projects/market-project.yaml, projects/platform-project.yaml          (AppProject CRD)
-#   wave   0 : platform/root.yaml                                                    (platform App-of-Apps)
-#   wave   0 : applications/appset.yaml                                              (market ApplicationSet)
+# 단일 부트스트랩 진입점 (app-of-apps).
+# `kubectl apply -f bootstrap/root-app.yaml` 한 번으로 다음을 sync한다:
+#   - bootstrap/root-app.yaml (자기 자신, self-managed)
+#   - bootstrap/apps.yaml     (3개 자식 Application multi-doc)
+#
+# 각 자식 Application은 자기 영역 (projects/, platform/, applications/) 을 sync.
 #
 # 사전 조건:
 #   - ArgoCD가 클러스터에 설치돼있고 `argocd` namespace 존재.
 #   - 본 매니페스트 레포가 GitHub에서 public이거나 ArgoCD가 read 권한이 있는 상태.
+#
+# R-31: 이전 버전은 `directory.include: '{a,b,c}'` brace expansion 사용 →
+# ArgoCD가 매칭 못 함 → 자식 0개 생성. app-of-apps 패턴으로 전환.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,10 +23,9 @@ spec:
   source:
     repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
     targetRevision: main
-    path: .
+    path: bootstrap
     directory:
       recurse: false
-      include: '{projects/market-project.yaml,projects/platform-project.yaml,platform/root.yaml,applications/appset.yaml}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
