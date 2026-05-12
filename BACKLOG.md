@@ -206,6 +206,7 @@ R-06 검증 완료:
 | 2026-05-12 | §7 CI workflow Trivy 버전 | `aquasecurity/trivy-action@0.24.0` → `@v0.36.0` + 공급망 사고 주석 | R-14: 0.24.0 미존재 + 0.0.1~0.34.2 태그는 2026-03 공급망 사고로 compromised. post-incident 태그 핀 |
 | 2026-05-12 | §0 결정표 + §12.0.1 | Spring Boot `3.3.0` → `3.5.13` (BOM). 빌드 toolchain / Spring Cloud 행 신설 (SC 2025.0.2 Northfields 명시) | 사진 표준 정렬 + Spring Boot 3.3 EOL + CVE-2025-22235 + Phase 4 api-gateway 호환성 |
 | 2026-05-12 | §13.3 step 7 | "SB 3.3.0 검증됨" → "SB 3.5.13 검증됨" (JarLauncher 경로 동일) | upgrade 결과 반영 |
+| 2026-05-12 | §7 CI workflow + §7.1 Secrets 표 | 7개 push-gated `if`에 `&& vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 추가. §7.1 표를 Secret/Variable 분리 + 신규 Variable 행 추가 | R-19: Phase 0 미완 상태에서 main CI 영구 빨간 상태 회피. Phase 0 후 1-flag 활성화 |
 
 ---
 
@@ -233,6 +234,7 @@ R-06 검증 완료:
 | R-16 | Kotlin 2.3.x + Gradle 9.x `BuildUtilKt.clearJarCaches()` 버그 | toolchain | Kotlin 2.3.20/2.3.21 + Gradle 9.0/9.5 모두 `ClasspathEntrySnapshotter$Settings` `NoClassDefFoundError`. 워크어라운드 3종(`runViaBuildToolsApi=false`, `useClasspathSnapshot=false`, `incremental=false`) 전부 무효. JetBrains upstream 이슈로 보임 | Kotlin 2.4.x 또는 2.3.22+ release 후 재시도. 그 전에는 2.1.0 + 8.10.2 고정 |
 | R-17 | common-libs v0.2.0 publish 후 order-service deps 재bump | upgrade 후속 | order-service는 현재 `com.troica.msa:*:0.2.0-SNAPSHOT`. common-libs v0.2.0 태그 push로 GH Packages publish 후 별도 PR로 `:0.2.0`으로 변경 (Phase 3 v0.1.0 때와 동일 패턴) | 사용자 v0.2.0 태그 push 후 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 | 일정 | 현재 3.5.13 사용. 6월 30일 이후 보안 패치 OSS 미제공. Phase 6 마무리 후 3.6.x/4.0 마이그레이션 검토 (Spring Cloud 2025.1.x = Boot 4 라인) | Phase 6 종료 시점 또는 EOL 2주 전 |
+| R-19 | CI push-gated step의 AWS_DEPLOYMENTS_ENABLED 게이트 | Phase 3 후속 | order-service 머지 후 main CI가 OIDC AssumeRole 실패로 영구 빨간 상태 → 팀이 "원래 빨갛다"에 익숙해지는 위험. `vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 가드 추가로 변수 미설정 시 push-gated step skip → main CI 녹색. Phase 0 완료 후 Org 레벨 변수를 `true`로 set하면 자동 활성 | **Phase 0 완료 후 GitHub Org Variables에 `AWS_DEPLOYMENTS_ENABLED=true` 설정** |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
 
 ---
