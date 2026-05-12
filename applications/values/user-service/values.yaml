@@ -1,7 +1,7 @@
 nameOverride: user-service
 
 image:
-  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/user-service
+  repository: 601766312629.dkr.ecr.ap-northeast-2.amazonaws.com/msa/user-service
 
 service:
   port: 8004          # SPEC §1.4 (gRPC 미노출 — REST 전용)

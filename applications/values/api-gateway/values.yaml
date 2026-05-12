@@ -1,7 +1,7 @@
 nameOverride: api-gateway
 
 image:
-  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/api-gateway
+  repository: 601766312629.dkr.ecr.ap-northeast-2.amazonaws.com/msa/api-gateway
 
 service:
   port: 8100          # SPEC §1.4 — 외부 진입점
