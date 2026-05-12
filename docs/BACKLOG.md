@@ -17,6 +17,25 @@
 | ⏸ | 대기 (선결 조건 필요) |
 | 🔍 | 검토 필요 |
 | 📌 | 보류 / 미래 작업 |
+| ❌ | 폐기 (작업하지 않기로 결정) |
+
+## ID convention
+
+본 문서 + commit message + PR 본문에 사용된 ID prefix는 역사적으로 다음 의미로 사용됨:
+
+| prefix | 의미 | 예시 | 현재 정책 |
+|---|---|---|---|
+| **R-NN** | Risk / follow-up / task | R-27 (CI 최적화), R-38 (kotlin-spring) | ✅ **앞으로 신규 task는 모두 R-NN으로 통일** |
+| **P*<phase>.<seq>* | Phase 작업 단위 | P0.1, P3.2 | 📌 historical — 현재는 표의 Phase 섹션으로 분류 충분 |
+| **D*N*** | 누적 결정 (Decision) | D1 ~ D7 | 📌 historical — 모두 [ADR](./adr/)로 흡수됨, 본 문서는 링크만 유지 |
+| **Q*N*** | 회의 검토 질문 (Question) | Q1 ~ Q7 | 📌 historical — D와 동일하게 ADR로 흡수 |
+| **P1-V** | 특수 (Phase 1 검증) | (1회만 사용) | 📌 historical |
+
+**규칙**:
+- ✏️ **신규 task는 R-NN 사용**. 다음 번호는 본 문서의 마지막 R 번호 + 1.
+- 📜 **과거 P/D/Q는 변경 안 함** — commit history + PR 본문에 이미 흩뿌려져 있어 immutable.
+- 🔗 **D/Q 의사결정 자체는 [docs/adr/](./adr/)이 단일 진실**. 본 문서는 해당 ADR에 링크만.
+- 🔁 향후 Phase 6 (정리/발표) 시점에 전면 재구성 검토 가능.
 
 ---
 
