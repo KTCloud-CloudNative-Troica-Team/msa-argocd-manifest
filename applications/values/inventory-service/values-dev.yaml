@@ -1,5 +1,5 @@
 image:
-  tag: main-PLACEHOLDER
+  tag: main-07c1e07
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
@@ -9,7 +9,6 @@ resources:
   limits:
     cpu: 300m
     memory: 512Mi
-
 # Q7 Spring Batch worker
 worker:
   enabled: true
