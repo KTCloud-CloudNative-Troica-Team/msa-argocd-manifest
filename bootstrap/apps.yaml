@@ -1,0 +1,89 @@
+# Phase 0 부트스트랩 자식 Application들.
+# root-app이 본 파일을 sync하면 3개 자식 Application이 생성되고,
+# 각자 자기 영역(projects/, platform/, applications/)을 sync한다.
+#
+# 본 파일은 multi-document yaml — `---` 구분자로 3개 Application 정의.
+#
+# 각 Application의 destination namespace는 ArgoCD가 CRD를 만드는 위치 (argocd).
+# 실제 sync 대상 CRD의 namespace는 각 매니페스트 자체의 metadata에 정의됨.
+---
+# 자식 1 — projects/: AppProject CRD 2개 (market, platform)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-projects
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: projects
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+---
+# 자식 2 — platform/: platform-app App-of-Apps (Istio, observability 등)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+---
+# 자식 3 — applications/: market-services ApplicationSet (6 service × 2 env)
+# applications/ 안에는 charts/, values/ 디렉토리도 있지만 recurse:false라
+# 첫 레벨 yaml(appset.yaml)만 sync. include:'appset.yaml'로 더 명시적.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-applications
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: applications
+    directory:
+      recurse: false
+      include: 'appset.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
