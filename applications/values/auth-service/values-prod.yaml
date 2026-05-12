@@ -1,0 +1,16 @@
+image:
+  tag: main-PLACEHOLDER
+replicaCount: 2
+springProfilesActive: "prod"
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

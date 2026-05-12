@@ -1,0 +1,28 @@
+nameOverride: auth-service
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/auth-service
+
+service:
+  port: 8005          # SPEC §1.4 (notification 폐기 → auth로 재할당)
+
+envFrom:
+  - secretRef:
+      name: auth-service-secrets        # DB password + Redis password + JWT_SECRET — ExternalSecrets
+  - configMapRef:
+      name: auth-service-config         # DB host, Redis host
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true
+
+# auth-service는 worker 분기 없음
+worker:
+  enabled: false
