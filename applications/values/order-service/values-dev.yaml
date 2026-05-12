@@ -1,5 +1,5 @@
 image:
-  tag: main-6652926 # CI update-dev job이 yq로 main-<sha7>로 자동 교체
+  tag: main-4398cc9 # CI update-dev job이 yq로 main-<sha7>로 자동 교체
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
