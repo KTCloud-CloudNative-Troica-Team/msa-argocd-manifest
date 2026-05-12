@@ -7,345 +7,419 @@
 
 ---
 
-## 1. Network 계층 (VPC + AZ + Subnet + Route)
-
-**검증 포인트**:
-- VPC CIDR `10.0.0.0/16`, AZ 2개 (2a/2b), public/private subnet 각 2개 = 총 4 subnet
-- public RT 1개 공유 (0.0.0.0/0 → IGW)
-- private RT 2개 (각 AZ별, 0.0.0.0/0 → 해당 AZ의 NAT)
-- NLB는 VPC 레벨이지만 양 AZ public subnet에 매핑 (subnet_mapping × 2)
+## 1. Network 레이어 (VPC + AZ + Subnet + IGW + NAT + NLB)
 
 ```mermaid
 flowchart TB
   Internet([🌐 Internet])
+  User([👤 운영자<br/>ssh / kubectl])
 
-  subgraph VPC["VPC: kt-cloud-vpc (10.0.0.0/16)"]
-    IGW[Internet Gateway<br>main_igw]
+  subgraph VPC["☁️ VPC kt-cloud-vpc — 10.0.0.0/16"]
+    IGW["Internet Gateway"]
+    NLB["NLB kt-cloud-nlb<br/>L4 TCP passthrough<br/>port 6443"]
 
-    subgraph PubRT["Public Route Table (kt-cloud-public-rt)"]
-      PubRoute["route: 0.0.0.0/0 → IGW"]
-    end
-
-    subgraph AZ2A["AZ: ap-northeast-2a"]
+    subgraph AZ2A["📍 ap-northeast-2a"]
       direction TB
-      PubA["Public Subnet<br>10.0.1.0/24<br>tag: kubernetes.io/role/elb=1"]
-      PriA["Private Subnet<br>10.0.2.0/24<br>tag: kubernetes.io/role/internal-elb=1"]
-      PriRTA["Private RT 2a<br>route: 0.0.0.0/0 → NAT 2a"]
-      NATA["NAT Gateway 2a<br>(in Public Subnet 2a)"]
-      NEIPa[EIP nat-eip-2a]
+      subgraph PubA["Public Subnet 10.0.1.0/24"]
+        NATA["NAT Gateway 2a<br/>+ EIP"]
+        BastA["bastion-a<br/>t3.nano"]
+      end
+      subgraph PriA["Private Subnet 10.0.2.0/24"]
+        MA1["master-1"]
+        MA2["master-2"]
+        WA["worker-1"]
+      end
     end
 
-    subgraph AZ2B["AZ: ap-northeast-2b"]
+    subgraph AZ2B["📍 ap-northeast-2b"]
       direction TB
-      PubB["Public Subnet<br>10.0.3.0/24<br>tag: kubernetes.io/role/elb=1"]
-      PriB["Private Subnet<br>10.0.4.0/24<br>tag: kubernetes.io/role/internal-elb=1"]
-      PriRTB["Private RT 2b<br>route: 0.0.0.0/0 → NAT 2b"]
-      NATB["NAT Gateway 2b<br>(in Public Subnet 2b)"]
-      NEIPb[EIP nat-eip-2b]
+      subgraph PubB["Public Subnet 10.0.3.0/24"]
+        NATB["NAT Gateway 2b<br/>+ EIP"]
+        BastB["bastion-b<br/>t3.nano"]
+      end
+      subgraph PriB["Private Subnet 10.0.4.0/24"]
+        MB1["master-3"]
+        WB1["worker-2"]
+        WB2["worker-3"]
+      end
     end
-
-    NLB["NLB kt-cloud-nlb<br>(VPC-scoped, subnet_mapping × 2)"]
-    NEIP1[EIP nlb_eip_2a]
-    NEIP2[EIP nlb_eip_2b]
   end
 
+  User -->|ssh :22| BastA
+  User -->|ssh :22| BastB
+  User -->|kubectl :6443| NLB
   Internet -->|inbound 6443| NLB
-  NLB -.assoc.- NEIP1
-  NLB -.assoc.- NEIP2
-  NLB -->|subnet_mapping| PubA
-  NLB -->|subnet_mapping| PubB
 
-  Internet -->|inbound 22 SSH| IGW
-  IGW <-->|attach| VPC
+  NLB -->|target| MA1
+  NLB -->|target| MA2
+  NLB -->|target| MB1
 
-  PubA -.RT assoc.- PubRT
-  PubB -.RT assoc.- PubRT
-  PubRT -->|0.0.0.0/0| IGW
+  BastA -.ssh jump.-> MA1
+  BastB -.ssh jump.-> MB1
 
-  PriA -.RT assoc.- PriRTA
-  PriRTA -->|0.0.0.0/0| NATA
-  NATA -.assoc.- NEIPa
+  PriA -.egress via NAT.-> NATA
+  PriB -.egress via NAT.-> NATB
   NATA --> IGW
-
-  PriB -.RT assoc.- PriRTB
-  PriRTB -->|0.0.0.0/0| NATB
-  NATB -.assoc.- NEIPb
   NATB --> IGW
+  BastA --> IGW
+  BastB --> IGW
+  IGW --> Internet
+
+  classDef vpc fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+  classDef az2a fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
+  classDef az2b fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000
+  classDef pub fill:#bbdefb,stroke:#1976d2,color:#000
+  classDef pri fill:#e1bee7,stroke:#7b1fa2,color:#000
+  classDef master fill:#ffcdd2,stroke:#c62828,color:#000
+  classDef worker fill:#c8e6c9,stroke:#2e7d32,color:#000
+  classDef bastion fill:#ffe0b2,stroke:#ef6c00,color:#000
+  classDef nat fill:#ffccbc,stroke:#d84315,color:#000
+  classDef nlb fill:#b2dfdb,stroke:#00695c,stroke-width:2px,color:#000
+  classDef igw fill:#d1c4e9,stroke:#4527a0,color:#000
+  classDef ext fill:#f5f5f5,stroke:#424242,color:#000
+
+  class VPC vpc
+  class AZ2A az2a
+  class AZ2B az2b
+  class PubA,PubB pub
+  class PriA,PriB pri
+  class MA1,MA2,MB1 master
+  class WA,WB1,WB2 worker
+  class BastA,BastB bastion
+  class NATA,NATB nat
+  class NLB nlb
+  class IGW igw
+  class Internet,User ext
 ```
+
+**검증 포인트**:
+- VPC `10.0.0.0/16`, subnet 4개 (public/private × 2 AZ)
+- NLB는 양 AZ public subnet에 attach (subnet_mapping × 2 + EIP × 2)
+- private subnet의 egress는 각 AZ의 NAT 경유 → IGW (route 분리)
+- bastion만 public subnet (외부 SSH 진입)
+- master 3대 (2a:2 + 2b:1), worker 3대 (2a:1 + 2b:2)
 
 ---
 
 ## 2. Compute + Storage (EC2 + EFS + EBS + VPC Endpoint)
 
-**검증 포인트**:
-- EC2 8대: master 3 (a:2 + b:1) + worker 3 (a:1 + b:2) + bastion 2 (a:1 + b:1)
-- bastion만 public subnet (`associate_public_ip_address=true`)
-- master/worker는 private subnet (IAM instance profile = `ktcloud-node-profile` with AmazonEC2ContainerRegistryReadOnly)
-- EBS × 3: worker 노드에만 (20GB, /dev/sdh)
-- EFS file system 1개 + Mount Target 2개 (각 AZ private subnet에 ENI)
-- VPC Endpoint Interface × 2 (ecr.api + ecr.dkr): private DNS enabled, ENI는 양 AZ private subnet
-- VPC Endpoint Gateway × 1 (s3): route table 매핑 (private RT 2a + 2b)
-
 ```mermaid
 flowchart LR
-  subgraph VPC["VPC kt-cloud-vpc"]
-    direction LR
+  subgraph VPC["☁️ VPC kt-cloud-vpc"]
+    direction TB
 
-    subgraph AZ2A["AZ ap-northeast-2a"]
-      direction TB
-      subgraph PubA["Public Subnet 10.0.1.0/24"]
-        BastA["EC2 bastion-2a<br>t3.nano<br>public IP"]
-      end
+    subgraph EndpointGroup["VPC Endpoints (intra-VPC)"]
+      direction LR
+      VPCE_API["VPCE Interface<br/>ecr.api<br/>private DNS"]
+      VPCE_DKR["VPCE Interface<br/>ecr.dkr<br/>private DNS"]
+      VPCE_S3[("VPCE Gateway<br/>s3<br/>route-table 매핑")]
+    end
+
+    EFS[("EFS File System<br/>kt-cloud-cluster-efs<br/>리전 스코프")]
+
+    subgraph AZ2A["📍 ap-northeast-2a"]
       subgraph PriA["Private Subnet 10.0.2.0/24"]
-        MA1["EC2 master-01<br>t3.medium<br>instance-profile"]
-        MA2["EC2 master-02<br>t3.medium<br>instance-profile"]
-        WA["EC2 worker-01<br>t3.medium<br>instance-profile"]
-        EBSa["EBS 20GB<br>/dev/sdh"]
-        EFSmA["EFS Mount Target<br>(ENI in 2a)"]
-        VPCEa1["VPCE ENI<br>ecr.api"]
-        VPCEa2["VPCE ENI<br>ecr.dkr"]
+        MA1["master-1<br/>t3.medium"]
+        MA2["master-2<br/>t3.medium"]
+        WA["worker-1<br/>t3.medium"]
+        EBSa["EBS 20GB<br/>/dev/sdh"]
+        EFSmA["EFS Mount Target<br/>ENI (2a)"]
+        ENI_A_API["VPCE ENI<br/>ecr.api"]
+        ENI_A_DKR["VPCE ENI<br/>ecr.dkr"]
       end
     end
 
-    subgraph AZ2B["AZ ap-northeast-2b"]
-      direction TB
-      subgraph PubB["Public Subnet 10.0.3.0/24"]
-        BastB["EC2 bastion-2b<br>t3.nano<br>public IP"]
-      end
+    subgraph AZ2B["📍 ap-northeast-2b"]
       subgraph PriB["Private Subnet 10.0.4.0/24"]
-        MB1["EC2 master-01<br>t3.medium<br>instance-profile"]
-        WB1["EC2 worker-01<br>t3.medium<br>instance-profile"]
-        WB2["EC2 worker-02<br>t3.medium<br>instance-profile"]
-        EBSb1["EBS 20GB<br>/dev/sdh"]
-        EBSb2["EBS 20GB<br>/dev/sdh"]
-        EFSmB["EFS Mount Target<br>(ENI in 2b)"]
-        VPCEb1["VPCE ENI<br>ecr.api"]
-        VPCEb2["VPCE ENI<br>ecr.dkr"]
+        MB1["master-3<br/>t3.medium"]
+        WB1["worker-2<br/>t3.medium"]
+        WB2["worker-3<br/>t3.medium"]
+        EBSb1["EBS 20GB<br/>/dev/sdh"]
+        EBSb2["EBS 20GB<br/>/dev/sdh"]
+        EFSmB["EFS Mount Target<br/>ENI (2b)"]
+        ENI_B_API["VPCE ENI<br/>ecr.api"]
+        ENI_B_DKR["VPCE ENI<br/>ecr.dkr"]
       end
     end
-
-    EFS["EFS File System<br>kt-cloud-cluster-efs<br>(region-scoped)"]
-    VPCE_API["VPC Endpoint<br>ecr.api Interface<br>private DNS"]
-    VPCE_DKR["VPC Endpoint<br>ecr.dkr Interface<br>private DNS"]
-    VPCE_S3["VPC Endpoint<br>s3 Gateway"]
   end
 
   WA -.volume_attachment.- EBSa
   WB1 -.volume_attachment.- EBSb1
   WB2 -.volume_attachment.- EBSb2
 
-  EFS -.mount_target_2a.- EFSmA
-  EFS -.mount_target_2b.- EFSmB
-  EFSmA -->|NFS 2049 from VPC| PriA
-  EFSmB -->|NFS 2049 from VPC| PriB
+  EFS -.mount.- EFSmA
+  EFS -.mount.- EFSmB
+  MA1 & MA2 & WA -->|NFS 2049| EFSmA
+  MB1 & WB1 & WB2 -->|NFS 2049| EFSmB
 
-  VPCE_API -.subnet_ids.- VPCEa1
-  VPCE_API -.subnet_ids.- VPCEb1
-  VPCE_DKR -.subnet_ids.- VPCEa2
-  VPCE_DKR -.subnet_ids.- VPCEb2
+  VPCE_API -.subnet_ids.- ENI_A_API
+  VPCE_API -.subnet_ids.- ENI_B_API
+  VPCE_DKR -.subnet_ids.- ENI_A_DKR
+  VPCE_DKR -.subnet_ids.- ENI_B_DKR
 
-  VPCE_S3 -.route_table_ids.- PriA
-  VPCE_S3 -.route_table_ids.- PriB
+  classDef vpc fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+  classDef az2a fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
+  classDef az2b fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000
+  classDef pri fill:#e1bee7,stroke:#7b1fa2,color:#000
+  classDef master fill:#ffcdd2,stroke:#c62828,color:#000
+  classDef worker fill:#c8e6c9,stroke:#2e7d32,color:#000
+  classDef storage fill:#cfd8dc,stroke:#37474f,color:#000
+  classDef vpce fill:#fff3e0,stroke:#e65100,color:#000
+  classDef eni fill:#ffe0b2,stroke:#ef6c00,color:#000
+
+  class VPC vpc
+  class AZ2A az2a
+  class AZ2B az2b
+  class PriA,PriB pri
+  class MA1,MA2,MB1 master
+  class WA,WB1,WB2 worker
+  class EBSa,EBSb1,EBSb2,EFS,EFSmA,EFSmB storage
+  class VPCE_API,VPCE_DKR,VPCE_S3,EndpointGroup vpce
+  class ENI_A_API,ENI_A_DKR,ENI_B_API,ENI_B_DKR eni
 ```
+
+**검증 포인트**:
+- EBS는 worker × 3에만 부착 (master/bastion은 root volume만)
+- EFS는 리전 스코프, 각 AZ private subnet에 mount target ENI 1개씩
+- VPC Endpoint Interface (ecr.api / ecr.dkr): 양 AZ private subnet에 ENI (subnet_ids로 attach)
+- VPC Endpoint Gateway (s3): route table 매핑 (private RT × 2) — 본 그림에서는 ENI 없는 별개 표시
 
 ---
 
 ## 3. Security Groups + 트래픽 흐름
 
-**검증 포인트**:
-- 4 SG: `cluster-node-sg` (master/worker), `bastion-node-sg` (bastion), `kt-cloud-cluster-efs-sg` (EFS), `troica-vpc-endpoint-sg` (VPC Endpoint ENI)
-- `cluster-node-sg`: 6443 from 0.0.0.0/0 (NLB ingress), intra-VPC TCP/UDP, ICMP, SSH from bastion-node-sg
-- `bastion-node-sg`: SSH 22 + ICMP from user's IP (`data.http.my_ip`)
-- `kt-cloud-cluster-efs-sg`: NFS 2049 from 10.0.0.0/16 (intra-VPC)
-- `troica-vpc-endpoint-sg`: HTTPS 443 from 10.0.0.0/16 (intra-VPC)
-
 ```mermaid
 flowchart TB
-  User([👤 User<br>data.http.my_ip])
-  GitHub([🐙 GitHub Actions<br>OIDC])
+  User([👤 User])
   Internet([🌐 Internet])
 
-  subgraph VPC["VPC kt-cloud-vpc (10.0.0.0/16)"]
+  subgraph VPC["☁️ VPC kt-cloud-vpc"]
     direction TB
 
-    subgraph SGBastion["SG bastion-node-sg"]
-      direction LR
-      Bastion[bastion × 2<br>public subnets]
+    subgraph SGBastion["🛡 SG bastion-node-sg"]
+      Bastion["bastion × 2<br/>public subnets"]
     end
 
-    subgraph SGCluster["SG cluster-node-sg"]
-      direction LR
-      Cluster[master × 3 + worker × 3<br>private subnets]
+    subgraph SGCluster["🛡 SG cluster-node-sg<br/>(self-ref ALL, intra-VPC)"]
+      ClusterNodes["master × 3<br/>worker × 3<br/>private subnets"]
     end
 
-    subgraph SGEFS["SG kt-cloud-cluster-efs-sg"]
-      EFSMounts[EFS Mount Targets × 2]
+    subgraph SGEFS["🛡 SG efs-sg<br/>(NFS from VPC CIDR)"]
+      EFSMounts["EFS Mount Target × 2"]
     end
 
-    subgraph SGVPCE["SG troica-vpc-endpoint-sg"]
-      VPCEs[VPC Endpoint ENIs<br>ecr.api + ecr.dkr]
+    subgraph SGVPCE["🛡 SG vpc-endpoint-sg<br/>(HTTPS from VPC CIDR)"]
+      VPCEs["VPCE ENI<br/>ecr.api + ecr.dkr"]
     end
 
-    NLB[NLB kt-cloud-nlb]
+    NLB["NLB kt-cloud-nlb"]
   end
 
-  User -->|22 SSH<br>ICMP| Bastion
-  Internet -->|6443<br>k8s API| NLB
-  NLB -->|6443| Cluster
+  User -->|"22 SSH<br/>+ ICMP<br/>(my_ip /32)"| Bastion
+  Internet -->|"6443 from 0.0.0.0/0"| NLB
+  NLB -->|"6443"| ClusterNodes
+  Bastion -->|"22 from bastion-sg"| ClusterNodes
+  ClusterNodes -->|"self-ref ALL"| ClusterNodes
+  ClusterNodes -->|"2049 NFS"| EFSMounts
+  ClusterNodes -->|"443 HTTPS"| VPCEs
 
-  Bastion -->|22 SSH<br>jump host| Cluster
-  Cluster -->|intra-VPC<br>10.0.0.0/16<br>TCP/UDP all| Cluster
-  Cluster -->|2049 NFS| EFSMounts
-  Cluster -->|443 HTTPS| VPCEs
+  classDef vpc fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+  classDef sgBastion fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+  classDef sgCluster fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+  classDef sgEFS fill:#cfd8dc,stroke:#37474f,stroke-width:2px,color:#000
+  classDef sgVPCE fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+  classDef nlb fill:#b2dfdb,stroke:#00695c,stroke-width:2px,color:#000
+  classDef ext fill:#f5f5f5,stroke:#424242,color:#000
+
+  class VPC vpc
+  class SGBastion sgBastion
+  class SGCluster sgCluster
+  class SGEFS sgEFS
+  class SGVPCE sgVPCE
+  class NLB nlb
+  class User,Internet ext
 ```
+
+**검증 포인트**:
+- `bastion-node-sg`: SSH 22 + ICMP only from `data.http.my_ip` (운영자 PC IP `/32`)
+- `cluster-node-sg`: 6443 from `0.0.0.0/0` (NLB 인입) + intra-VPC TCP/UDP/ICMP + SSH from `bastion-node-sg`
+- `cluster-node-sg` self-ref (`aws_security_group_rule.cluster_node_self_ingress`): 같은 SG 멤버끼리 ALL protocol → Calico IP-in-IP / worker ↔ master 통신
+- `efs-sg`: NFS 2049 from `10.0.0.0/16` (intra-VPC)
+- `vpc-endpoint-sg`: HTTPS 443 from `10.0.0.0/16` (intra-VPC)
 
 ---
 
-## 4. CI/CD (계정 레벨 IAM + ECR + KMS — GitHub Actions OIDC flow)
-
-**검증 포인트**:
-- IAM OIDC Provider: `token.actions.githubusercontent.com` (계정 레벨, 단일)
-- IAM Role `troica-gha-ecr-push`: name-based ARN (destroy/apply 사이클 안정)
-- Trust policy: `repo:KTCloud-CloudNative-Troica-Team/msa-*:ref:refs/heads/main` 만 assume 허용
-- Inline Policy: ECR push (BatchGetImage, PutImage, UploadLayerPart 등) on `repository/msa/*`
-- 6개 ECR Repo: KMS encrypted (`AES_256` via `aws_kms_key.ecr`), IMMUTABLE tag, 30-image lifecycle
-- 노드의 ECR pull은 별도 경로: EC2 instance profile에 `AmazonEC2ContainerRegistryReadOnly` attached (kubelet credential provider가 호출)
+## 4. CI/CD — GitHub Actions OIDC → ECR push
 
 ```mermaid
 flowchart LR
-  subgraph GH["GitHub Organization<br>KTCloud-CloudNative-Troica-Team"]
+  subgraph GH["🐙 GitHub Organization<br/>KTCloud-CloudNative-Troica-Team"]
     direction TB
-    Repo[msa-* repository<br>main branch push]
-    Workflow[CI workflow<br>aws-actions/configure-aws-credentials]
+    Repo["msa-* repository<br/>main branch push"]
+    Workflow["CI workflow<br/>aws-actions/configure-aws-credentials@v4"]
     Repo --> Workflow
   end
 
-  subgraph AWS["AWS Account 601766312629"]
+  subgraph AWS["☁️ AWS Account 601766312629 (account-level)"]
     direction TB
 
-    subgraph IAM["IAM (account-level)"]
+    subgraph IAM["🔐 IAM"]
       direction TB
-      OIDC["OIDC Provider<br>token.actions.githubusercontent.com<br>thumbprint 6938fd4d..."]
-      Role["IAM Role<br>troica-gha-ecr-push<br>Trust: repo:.../msa-*:ref:refs/heads/main"]
-      Policy["Inline Policy<br>ecr-push:<br>GetAuthorizationToken<br>BatchGet/PutImage<br>UploadLayerPart"]
-      OIDC -->|Federated principal| Role
+      OIDC["OIDC Provider<br/>token.actions.githubusercontent.com"]
+      Role["IAM Role<br/>troica-gha-ecr-push<br/>Trust: repo:org/msa-*:ref:refs/heads/main"]
+      Policy["Inline Policy<br/>ECR push actions"]
+      OIDC -->|Federated| Role
       Role --> Policy
     end
 
-    subgraph KMSGroup["KMS"]
-      KMS[KMS Key ecr<br>rotation enabled<br>deletion_window 7d]
-      Alias[Alias alias/troica-ecr]
-      KMS --- Alias
+    subgraph ECRGroup["📦 ECR Repositories"]
+      direction TB
+      ECR1["msa/user-service"]
+      ECR2["msa/auth-service"]
+      ECR3["msa/product-service"]
+      ECR4["msa/order-service"]
+      ECR5["msa/inventory-service"]
+      ECR6["msa/api-gateway"]
     end
 
-    subgraph ECRGroup["ECR Repositories (× 6, IMMUTABLE)"]
-      direction TB
-      ECR1[msa/user-service]
-      ECR2[msa/auth-service]
-      ECR3[msa/product-service]
-      ECR4[msa/order-service]
-      ECR5[msa/inventory-service]
-      ECR6[msa/api-gateway]
-    end
+    KMS["🔑 KMS Key<br/>alias/troica-ecr<br/>rotation enabled"]
 
     Policy -.scoped to.- ECRGroup
-    KMS -.encryption.- ECR1
-    KMS -.encryption.- ECR2
-    KMS -.encryption.- ECR3
-    KMS -.encryption.- ECR4
-    KMS -.encryption.- ECR5
-    KMS -.encryption.- ECR6
+    KMS -.encrypts.- ECRGroup
   end
 
-  Workflow -->|1. AssumeRoleWithWebIdentity<br>(STS)| OIDC
-  Workflow -->|2. session credentials| Role
-  Workflow -->|3. docker push| ECR3
+  Workflow -->|"1 AssumeRoleWithWebIdentity via STS"| OIDC
+  Workflow -->|"2 docker push"| ECR3
+
+  classDef gh fill:#e0e0e0,stroke:#212121,stroke-width:2px,color:#000
+  classDef aws fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+  classDef iam fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000
+  classDef ecr fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+  classDef kms fill:#ffe0b2,stroke:#bf360c,color:#000
+  classDef role fill:#ffcdd2,stroke:#c62828,color:#000
+
+  class GH gh
+  class AWS aws
+  class IAM iam
+  class ECRGroup ecr
+  class ECR1,ECR2,ECR3,ECR4,ECR5,ECR6 ecr
+  class KMS kms
+  class OIDC,Role,Policy role
+  class Repo,Workflow gh
 ```
+
+**검증 포인트**:
+- IAM OIDC Provider, IAM Role (`troica-gha-ecr-push`), Policy 모두 **계정 레벨** (VPC 외부)
+- Trust policy 조건: `repo:KTCloud-CloudNative-Troica-Team/msa-*:ref:refs/heads/main` — main 브랜치만 assume 허용
+- IAM Role의 name-based ARN → destroy/apply 사이클 안정 (GitHub Org Secret `AWS_ACCOUNT_ID` 영구 유효)
+- ECR Repo × 6, KMS 암호화, IMMUTABLE tag, 30-image lifecycle
 
 ---
 
-## 5. EC2 노드의 ECR Image Pull (kubelet 경로)
-
-**검증 포인트** — 위 CI/CD flow와 별개 (push vs pull 분리):
-- EC2 instance profile `ktcloud-node-profile` → IAM Role (`ktcloud-cluster-node-role`, data source) → `AmazonEC2ContainerRegistryReadOnly` AWS managed policy attached
-- kubelet에 ecr-credential-provider binary 설치 (R-29: Go 빌드 후 ansible copy)
-- kubelet config `/etc/kubernetes/credential-provider-config.yaml`로 ECR matchImages 지정
-- kubelet args `--image-credential-provider-config=...` 활성 (R-30: `kubeadm-flags.env` 통합)
-- 트래픽 흐름: kubelet → ECR API/DKR (VPC Endpoint Interface) + 이미지 layer 다운로드는 S3 (VPC Endpoint Gateway)
+## 5. EC2 노드의 ECR Image Pull (kubelet 경로 — CI push와 별개)
 
 ```mermaid
 flowchart TB
-  subgraph Node["EC2 Node (master/worker, private subnet)"]
+  subgraph Node["🖥 EC2 Node (master/worker, private subnet)"]
     direction TB
-    Kubelet["kubelet<br>--image-credential-provider-config<br>--image-credential-provider-bin-dir"]
-    Provider["ecr-credential-provider binary<br>/usr/local/bin/<br>(Go-built, R-29)"]
-    Profile["EC2 instance_profile<br>ktcloud-node-profile<br>→ ECR ReadOnly"]
+    Kubelet["kubelet<br/>--image-credential-provider-config<br/>--image-credential-provider-bin-dir"]
+    Provider["ecr-credential-provider binary<br/>/usr/local/bin/<br/>Go-built (R-29)"]
+    Profile["EC2 instance_profile<br/>ktcloud-node-profile<br/>+ AmazonEC2ContainerRegistryReadOnly"]
     Kubelet --> Provider
     Provider --> Profile
   end
 
-  subgraph VPC["VPC (intra)"]
-    VPCE_API[VPC Endpoint<br>ecr.api Interface<br>private DNS]
-    VPCE_DKR[VPC Endpoint<br>ecr.dkr Interface<br>private DNS]
-    VPCE_S3[VPC Endpoint<br>s3 Gateway]
+  subgraph VPCEndpoints["🔌 VPC Endpoints (intra-VPC, private DNS)"]
+    direction LR
+    VPCE_API["VPCE Interface<br/>ecr.api"]
+    VPCE_DKR["VPCE Interface<br/>ecr.dkr"]
+    VPCE_S3["VPCE Gateway<br/>s3"]
   end
 
-  subgraph ECR["ECR (account-level)"]
-    ECRRepo[ECR Repository<br>msa/&lt;service&gt;]
-    S3Backing[(S3<br>image layers<br>AWS-managed)]
+  subgraph ECR["📦 ECR (account-level)"]
+    direction TB
+    ECRRepo["ECR Repository<br/>msa/&lt;service&gt;"]
+    S3Backing[("S3 image layers<br/>AWS-managed")]
   end
 
-  Provider -->|1. GetAuthorizationToken| VPCE_API
+  Provider -->|"1 GetAuthorizationToken"| VPCE_API
   VPCE_API --> ECRRepo
-  Kubelet -->|2. pull manifest| VPCE_DKR
+  Kubelet -->|"2 pull manifest"| VPCE_DKR
   VPCE_DKR --> ECRRepo
-  Kubelet -->|3. pull layers| VPCE_S3
+  Kubelet -->|"3 pull layers"| VPCE_S3
   VPCE_S3 --> S3Backing
+
+  classDef node fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+  classDef vpce fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+  classDef ecr fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000
+  classDef internal fill:#e1f5fe,stroke:#0277bd,color:#000
+
+  class Node node
+  class VPCEndpoints vpce
+  class VPCE_API,VPCE_DKR,VPCE_S3 vpce
+  class ECR ecr
+  class ECRRepo,S3Backing ecr
+  class Kubelet,Provider,Profile internal
 ```
+
+**검증 포인트**:
+- CI push와 별개 경로 — kubelet의 ECR pull은 instance profile (`AmazonEC2ContainerRegistryReadOnly`) 사용
+- ecr-credential-provider는 GitHub release에 binary 없음 → Go 빌드 후 ansible copy (R-29)
+- kubelet args 적용: drop-in 미평가 회피 위해 `kubeadm-flags.env` 직접 통합 (R-30)
+- 트래픽: ECR API/DKR은 VPCE Interface, 이미지 layer는 S3 Gateway endpoint
 
 ---
 
 ## 6. 영구 / 임시 / 수동 자원 분류
 
-**검증**: 비용 사이클(`destroy-temp.sh`) 시 무엇이 destroy되고 무엇이 유지되는지.
-
 ```mermaid
 flowchart LR
-  subgraph Permanent["영구 (prevent_destroy = true, ~$1/월)"]
+  subgraph Permanent["✅ 영구 (prevent_destroy = true)<br/>월 ~$1"]
     direction TB
-    P1[IAM OIDC Provider]
-    P2[IAM Role troica-gha-ecr-push]
-    P3[IAM Role Policy]
-    P4[KMS Key + Alias]
-    P5[ECR Repo × 6]
-    P6[VPC + Subnet × 4]
-    P7[Internet Gateway]
-    P8[Route Tables × 3]
-    P9[Security Groups × 4]
-    P10[Key Pair]
-    P11[IAM Instance Profile<br>+ Role attachment]
+    P1["IAM OIDC Provider"]
+    P2["IAM Role troica-gha-ecr-push"]
+    P3["IAM Role Policy (inline)"]
+    P4["KMS Key + Alias"]
+    P5["ECR Repo × 6"]
+    P6["VPC + Subnet × 4"]
+    P7["IGW + Route Tables × 3"]
+    P8["Security Groups × 4"]
+    P9["Key Pair"]
+    P10["IAM Instance Profile"]
   end
 
-  subgraph Temporary["임시 (destroy-temp.sh 대상, ~$300/월)"]
+  subgraph Temporary["♻️ 임시 (destroy-temp.sh 대상)<br/>월 ~$300"]
     direction TB
-    T1[EC2 × 8<br>master 3 + worker 3 + bastion 2]
-    T2[EBS × 3 + Volume Attachment × 3]
-    T3[NAT Gateway × 2 + NAT EIP × 2]
-    T4[NLB + Target Group + Listener + Attachments × 3]
-    T5[NLB EIP × 2]
-    T6[VPC Endpoint × 3<br>ecr.api + ecr.dkr + s3]
-    T7[EFS File System + Mount Target × 2 + EFS SG]
-    T8[local_file ansible_inventory]
+    T1["EC2 × 8 (master 3 + worker 3 + bastion 2)"]
+    T2["EBS × 3 + Volume Attachment × 3"]
+    T3["NAT Gateway × 2 + NAT EIP × 2"]
+    T4["NLB + Target Group + Listener + Attach × 3"]
+    T5["NLB EIP × 2"]
+    T6["VPC Endpoint × 3 (ecr.api + ecr.dkr + s3)"]
+    T7["EFS File System + Mount Target × 2 + EFS SG"]
+    T8["local_file ansible_inventory"]
   end
 
-  subgraph Manual["수동 (Terraform 외부, ~$0.5/월)"]
-    M1[S3 Backend Bucket<br>troica-tfstate-&lt;SUFFIX&gt;]
+  subgraph Manual["✋ 수동 (Terraform 외부)<br/>월 ~$0.5"]
+    direction TB
+    M1["S3 Backend Bucket<br/>troica-tfstate-&lt;SUFFIX&gt;"]
   end
+
+  classDef perm fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+  classDef temp fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+  classDef manual fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000
+
+  class Permanent perm
+  class Temporary temp
+  class Manual manual
+  class P1,P2,P3,P4,P5,P6,P7,P8,P9,P10 perm
+  class T1,T2,T3,T4,T5,T6,T7,T8 temp
+  class M1 manual
 ```
 
 ---
 
-## 통합 토폴로지 (한 화면 요약)
+## 7. 통합 토폴로지 (한 화면 요약)
 
 ```mermaid
 flowchart TB
@@ -353,72 +427,99 @@ flowchart TB
   GH([🐙 GitHub Actions])
   User([👤 User])
 
-  subgraph Acct["AWS Account (601766312629) — 영구"]
-    OIDC[IAM OIDC]
-    Role[Role gha-ecr-push]
-    KMS[KMS]
-    ECR[ECR × 6]
+  subgraph AcctLevel["☁️ AWS Account (영구 자원, account-level)"]
+    direction LR
+    OIDC["IAM OIDC"]
+    Role["IAM Role<br/>gha-ecr-push"]
+    KMS["🔑 KMS"]
+    ECR["📦 ECR × 6"]
     OIDC --> Role
-    Role -.- ECR
-    KMS -.- ECR
+    Role -.scoped.- ECR
+    KMS -.encrypts.- ECR
   end
 
-  subgraph Region["Region ap-northeast-2"]
-    subgraph VPCBox["VPC kt-cloud-vpc 10.0.0.0/16"]
-      IGW[IGW]
-      NLB[NLB]
-      EFS[EFS]
-      VPCE[VPC Endpoint × 3]
+  subgraph Region["📍 Region ap-northeast-2"]
+    subgraph VPCBox["☁️ VPC kt-cloud-vpc 10.0.0.0/16"]
+      IGW["IGW"]
+      NLB["NLB :6443"]
+      EFS["EFS"]
+      VPCE["VPCE × 3<br/>ecr.api/dkr/s3"]
 
-      subgraph A2A["AZ 2a"]
-        PubA["public 10.0.1.0/24<br>NAT-2a, bastion-2a"]
-        PriA["private 10.0.2.0/24<br>master-01/02, worker-01"]
+      subgraph A2A["📍 AZ 2a"]
+        PubA["public 10.0.1.0/24<br/>NAT-a · bastion-a"]
+        PriA["private 10.0.2.0/24<br/>master-1/2 · worker-1"]
       end
 
-      subgraph A2B["AZ 2b"]
-        PubB["public 10.0.3.0/24<br>NAT-2b, bastion-2b"]
-        PriB["private 10.0.4.0/24<br>master-01, worker-01/02"]
+      subgraph A2B["📍 AZ 2b"]
+        PubB["public 10.0.3.0/24<br/>NAT-b · bastion-b"]
+        PriB["private 10.0.4.0/24<br/>master-3 · worker-2/3"]
       end
     end
   end
 
-  subgraph S3Ext["수동"]
-    Bucket[S3 backend bucket]
+  subgraph S3Ext["✋ 수동 (외부)"]
+    Bucket["S3 backend bucket"]
   end
 
-  GH -->|OIDC AssumeRole| OIDC
-  GH -->|docker push| ECR
-  Internet -->|22| PubA
-  Internet -->|22| PubB
+  GH -->|"OIDC AssumeRole"| OIDC
+  GH -->|"docker push"| ECR
+  User -->|ssh| PubA
+  User -->|ssh| PubB
+  User -->|kubectl| NLB
   Internet -->|6443| NLB
   NLB --> PriA
   NLB --> PriB
   PubA --- IGW
   PubB --- IGW
-  PriA -.NAT.- PubA
-  PriB -.NAT.- PubB
+  PriA -.via NAT.- PubA
+  PriB -.via NAT.- PubB
   PriA -.NFS.- EFS
   PriB -.NFS.- EFS
   PriA -.443.- VPCE
   PriB -.443.- VPCE
   VPCE -.ECR pull.- ECR
   User -->|terraform init| Bucket
+
+  classDef vpc fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+  classDef az2a fill:#e3f2fd,stroke:#1565c0,color:#000
+  classDef az2b fill:#f3e5f5,stroke:#6a1b9a,color:#000
+  classDef pub fill:#bbdefb,stroke:#1976d2,color:#000
+  classDef pri fill:#e1bee7,stroke:#7b1fa2,color:#000
+  classDef acct fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+  classDef region fill:#f1f8e9,stroke:#558b2f,stroke-width:2px,color:#000
+  classDef ext fill:#f5f5f5,stroke:#424242,color:#000
+  classDef nlb fill:#b2dfdb,stroke:#00695c,color:#000
+  classDef ecr fill:#ffcdd2,stroke:#c62828,color:#000
+  classDef storage fill:#cfd8dc,stroke:#37474f,color:#000
+
+  class VPCBox vpc
+  class A2A az2a
+  class A2B az2b
+  class PubA,PubB pub
+  class PriA,PriB pri
+  class AcctLevel acct
+  class Region region
+  class S3Ext ext
+  class Internet,User,GH ext
+  class NLB nlb
+  class ECR,Role,OIDC,KMS ecr
+  class EFS,VPCE,Bucket storage
+  class IGW pri
 ```
 
 ---
 
-## 검증 체크리스트 (다이어그램 작성 시 확인)
+## 검증 체크리스트
 
-- ✅ VPC CIDR `10.0.0.0/16`, 4개 subnet CIDR 정확 (1/2/3/4 .0/24)
-- ✅ public subnet에 IGW route (kt-cloud-public-rt 공유)
-- ✅ private subnet에 NAT route (각 AZ별 분리)
+- ✅ VPC CIDR `10.0.0.0/16`, 4개 subnet CIDR 정확 (`.1/.2/.3/.4 .0/24`)
+- ✅ public subnet에 IGW 경유 / private subnet에 NAT 경유
 - ✅ NLB는 subnet_mapping으로 양 AZ public subnet에 attach + 각 AZ EIP
 - ✅ bastion은 public subnet (`associate_public_ip_address=true`)
-- ✅ master/worker는 private subnet + instance profile
-- ✅ EFS mount target은 private subnet ENI
-- ✅ VPC Endpoint Interface(ecr.api/ecr.dkr)는 private subnet ENI, private DNS enabled
-- ✅ VPC Endpoint Gateway(s3)는 route_table_ids 매핑 (private RT × 2)
+- ✅ master/worker는 private subnet + instance profile (`ktcloud-node-profile`)
+- ✅ EFS mount target은 private subnet ENI (양 AZ)
+- ✅ VPC Endpoint Interface (ecr.api/ecr.dkr)는 private subnet ENI, private DNS enabled
+- ✅ VPC Endpoint Gateway (s3)는 route_table_ids 매핑 (private RT × 2)
 - ✅ SG 4개 + 의도된 ingress rule 명시
 - ✅ IAM OIDC + Role trust policy = `repo:.../msa-*:ref:refs/heads/main`
-- ✅ ECR push (CI) vs ECR pull (kubelet)은 다른 경로 — 분리 표현
+- ✅ ECR push (CI) vs ECR pull (kubelet) — 다른 경로, 분리 표현
 - ✅ 영구/임시/수동 자원 분류 정확
