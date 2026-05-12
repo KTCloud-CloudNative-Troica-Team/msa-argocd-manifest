@@ -1,5 +1,5 @@
 image:
-  tag: main-9436efa
+  tag: main-a87e912
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
