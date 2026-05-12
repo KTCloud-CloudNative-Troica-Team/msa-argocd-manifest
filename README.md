@@ -13,6 +13,9 @@ Troica Market Service MSA의 **GitOps 매니페스트 단일 진실의 원천**.
 
 ![AWS 배포 아키텍처](./docs/images/AWS-arch.png)
 
+> 모든 AWS 리소스 상세 다이어그램 (Mermaid, 6개 섹션): [docs/images/AWS-architecture.md](./docs/images/AWS-architecture.md)
+> — Network / Compute+Storage / Security Groups / CI-CD (IAM/ECR) / Kubelet ECR pull / 영구·임시·수동 분류 + 통합 요약
+
 핵심 컴포넌트:
 - **AWS Phase 0** (영구 자원): IAM OIDC + 6 ECR repo + KMS — `msa-provisioning` Terraform 관리
 - **K8s 클러스터** (임시 자원): EC2 + NAT + NLB + EFS — `msa-provisioning` Ansible 셋업
