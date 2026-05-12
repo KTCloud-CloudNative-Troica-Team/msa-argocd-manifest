@@ -13,13 +13,49 @@
 
 ## 진행 중
 
-- **Phase 4 prep**: [`PHASE_4_RUNBOOK.md`](./PHASE_4_RUNBOOK.md) 추가, SPEC §1.4 포트 할당 표 추가. 팀장님 P0 답변 받자마자 서비스별 카드로 빠르게 실행 가능.
+- **Phase 4 본격 진행** (팀장님 답변 2026-05-12 받은 후):
+  - product-service ✅ 머지 완료
+  - order-service Q5/Q6 후속 / inventory-service Q5/Q7 / user-service / auth-service(신규 레포) / api-gateway 진행 예정
+  - 자세한 카드는 [`PHASE_4_RUNBOOK.md`](./PHASE_4_RUNBOOK.md) §4 참조
 
 ---
 
-## 팀장님 보류 사항 (Phase 4 시작 전 결정 필요)
+## 팀장님 답변 (2026-05-12 수령) 및 후속 결정
 
-모노레포 코드 점검 결과 SPEC과 어긋나거나 미구현 항목이 있어서 결정 필요. P0는 Phase 4 시작 직전 필수.
+팀장님 답변 후 모노레포 main 변경사항 점검 + 신규 결정 (D1~D6) 정리. SPEC v2.0 수준의 변경.
+
+### 팀장님 P0~P2 답변
+
+| # | 질문 | 답변 |
+|---|------|------|
+| Q1 | api-gateway 정체 | **(c) BFF + Spring Cloud Gateway 혼합 (한 서비스에 통합)** |
+| Q2 | user/auth/identification 묶음 | **identification 폐기**, auth는 별도 서비스. 모노레포 main에 `auth-service` 신규 추가 |
+| Q3 | notification scope | **notification-service 폐기**. Grafana → Slack 알림만 |
+| Q4 | Kafka 직렬화 | **(a) JSON 유지** |
+| Q5 | Kafka 토픽명 | **(a) SPEC 표준으로 정렬** |
+| Q6 | order state machine | **(a) 확장 — 우리가 구현** |
+| Q7 | inventory event sourcing + Spring Batch worker | **(b) — 우리가 구현** |
+
+### 후속 결정 (D1~D6 — 2026-05-12 확정)
+
+| # | 결정 | 의도 |
+|---|------|------|
+| D1 | `auth-service` → 신규 레포 `msa-auth-service` 생성. notification은 archive (D6) | 레포 1개당 1 deployable 원칙 일관성 |
+| D2 | `client-redis`는 팀장님의 **JitPack** 패키지(`com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2`)로 일원화. common-libs:client-redis는 v0.3.0에서 제거 | 팀장님이 이미 외부 publish 운영 중 — 중복 제거 |
+| D3 | `client-ses` common-libs에서 제거 (notification 폐기와 일관) | dead code 정리 |
+| D5 | Q6/Q7 모두 우리가 구현. Phase 4 진행하면서 함께 | 별도 Phase로 분리 안 함 |
+| D6 | `msa-notification-service` → GitHub UI에서 **Archive** | delete 대신 read-only 보존 |
+| **D7** (암묵) | `order.confirmed`/`order.cancelled` 토픽 발행은 유지하되 현재 consumer 없음 | Outbox 일관성 + 추후 subscribe 가능성 유지 |
+
+### 사용자 대기 액션
+
+- [ ] **GitHub UI**: `msa-notification-service` Archive (Settings → General → Danger Zone)
+- [ ] **GitHub UI**: 신규 레포 `msa-auth-service` 생성 (LICENSE + README만)
+- [ ] common-libs v0.3.0 PR 머지 후 `git tag v0.3.0 && git push origin v0.3.0`
+
+### 원본 Q1~Q9 요청 표 (이력 보존)
+
+모노레포 코드 점검 결과 SPEC과 어긋나거나 미구현 항목이 있어서 결정 필요했음. 위 답변 표에서 모두 처리됨.
 
 | # | 우선순위 | 질문 | 옵션 | 영향 받는 R 항목 |
 |---|---------|------|------|-----------------|
@@ -253,6 +289,12 @@ R-06 검증 완료:
 | R-17 | common-libs v0.2.0 publish 후 order-service deps 재bump | upgrade 후속 | order-service는 현재 `com.troica.msa:*:0.2.0-SNAPSHOT`. common-libs v0.2.0 태그 push로 GH Packages publish 후 별도 PR로 `:0.2.0`으로 변경 (Phase 3 v0.1.0 때와 동일 패턴) | 사용자 v0.2.0 태그 push 후 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 | 일정 | 현재 3.5.13 사용. 6월 30일 이후 보안 패치 OSS 미제공. Phase 6 마무리 후 3.6.x/4.0 마이그레이션 검토 (Spring Cloud 2025.1.x = Boot 4 라인) | Phase 6 종료 시점 또는 EOL 2주 전 |
 | R-19 | CI push-gated step의 AWS_DEPLOYMENTS_ENABLED 게이트 | Phase 3 후속 | order-service 머지 후 main CI가 OIDC AssumeRole 실패로 영구 빨간 상태 → 팀이 "원래 빨갛다"에 익숙해지는 위험. `vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 가드 추가로 변수 미설정 시 push-gated step skip → main CI 녹색. Phase 0 완료 후 Org 레벨 변수를 `true`로 set하면 자동 활성 | **Phase 0 완료 후 GitHub Org Variables에 `AWS_DEPLOYMENTS_ENABLED=true` 설정** |
+| R-20 | JitPack client-redis 운영 모드 | Phase 4 | 팀장님 별도 GitHub 레포 + JitPack publish 운영. 우리 통제 밖 — JitPack 빌드 실패 가능성, 버전 lifecyle 가시성 낮음. 모니터링 필요 시 dependabot/renovate로 버전 변경 알림만 | 운영 모니터링 |
+| R-21 | Q6 order state machine 확장 구현 | Phase 4 (#3) | `OrderLineItemStatus` enum 확장 + `checkTransitive` 갱신 + 새 Outbox 테이블(or 기존 일반화) + `order.confirmed`/`order.cancelled` 이벤트 발행자 | Phase 4 진행 중 |
+| R-22 | Q7 inventory Event Sourcing + Spring Batch worker | Phase 4 (#4) | `inventory-event`를 append-only 스토어로 변환 (processed flag 제거 또는 일관 유지). `@EnableBatchProcessing` + Job/Step. worker 프로파일 + 별도 K8s Deployment. spring-boot-starter-batch 의존성 추가 | Phase 4 진행 중 |
+| R-23 | api-gateway BFF + SC Gateway 혼합 — 어떤 path가 어디로? | Phase 4 (#7) | 라우팅 매트릭스 필요: 어떤 path는 BFF REST controller로, 어떤 path는 SC Gateway route로. 현재 모노레포 코드는 product/order/inventory를 BFF로 처리. 신규 추가될 SC Gateway routes 대상 미정 | Phase 4 #7 진행 직전 결정 |
+| R-24 | identification 모듈 제거에 따른 user 도메인 영향 | Phase 4 (#5) | 모노레포에서 identification 폐기됨. user/auth 코드에서 identification 의존 흔적 제거 확인. 이메일 검증 기능은? | user-service / auth-service 작업 시 확인 |
+| R-25 | `auth-service`의 JWT secret 외부화 | Phase 4 / 5 | 모노레포 application.yaml에 평문 secret(`v7S6A9yB2E5H8KcNfUjXnZr4u7x!A%D*G-`). PoC라도 K8s Secret + ExternalSecrets로 분리 필요. Phase 0 후 정식 secret 운영 | Phase 0 후 |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
 
 ---
