@@ -13,10 +13,11 @@
 
 ## 진행 중
 
-- **Phase 4 본격 진행** (팀장님 답변 2026-05-12 받은 후):
-  - product-service ✅ 머지 완료
-  - order-service Q5/Q6 후속 / inventory-service Q5/Q7 / user-service / auth-service(신규 레포) / api-gateway 진행 예정
-  - 자세한 카드는 [`PHASE_4_RUNBOOK.md`](./PHASE_4_RUNBOOK.md) §4 참조
+- **Phase 0 — AWS 인프라** (2026-05-12 진행):
+  - PR 1: `msa-provisioning phase-0/aws-ecr-oidc` — Terraform OIDC + 6 ECR repo + VPC Endpoint + KMS. terraform validate 통과
+  - PR 2 (stacked): `msa-provisioning phase-0/kubelet-ecr-credential-provider` — node role ECR readonly attach + ansible playbook (credential-provider-config + kubelet drop-in)
+  - 사용자 액션: PR 1 머지 → terraform apply → Org Secrets(`AWS_ACCOUNT_ID`, `MANIFEST_PAT`) + Variable(`AWS_DEPLOYMENTS_ENABLED=true`) 등록 → PR 2 머지 → ansible-playbook 실행
+- **Phase 4 머지 진행 중** — auth-service, api-gateway 미머지. 다른 4개(product/order/inventory/user) 머지 완료.
 
 ---
 
@@ -243,6 +244,43 @@ R-06 검증 완료:
 
 검증: `helm template ... -f values.yaml -f values-{dev,prod}.yaml` → ServiceAccount + Service + api Deployment + worker Deployment (+ prod HPA) 모두 정상.
 
+### 2026-05-12 — Phase 4 후속: 5개 서비스 (branch별)
+
+- `msa-product-service phase-4/initial-setup` — 단순 추출
+- `msa-order-service phase-4/topics-and-state-machine` — Q5 토픽명 + Q6 state machine 확장 + OrderStatusOutbox + admin endpoint
+- `msa-inventory-service phase-4/initial-setup` — Q5 + Q7 Event Sourcing + Spring Batch worker + JitPack client-redis
+- `msa-user-service phase-4/initial-setup` — dual delivery (user lib publish + user-service app). user 라이브러리 v0.1.0 publish 완료 (feature branch tip 기준)
+- `msa-auth-service phase-4/initial-setup` (신규 레포) — auth lib + auth-service app, gRPC `AuthService.{SignUp, SignIn, CheckValidity}`
+- `msa-api-gateway phase-4/initial-setup` (단일 모듈) — Spring Cloud 2025.0.2 Northfields + BFF + Gateway routes 혼합 (Q1 (c))
+- 매니페스트 PR 6개 동행 — 4개 머지 완료, auth-service / api-gateway 미머지
+
+### 2026-05-12 — Phase 0: AWS OIDC + ECR + VPC Endpoint + kubelet credential provider
+
+`msa-provisioning` 2개 stacked PR:
+
+**PR 1 `phase-0/aws-ecr-oidc`** (commit `4478bf8`):
+- `terraform/variables.tf` — region, github_org, msa_services 변수 + `aws_caller_identity` data source
+- `terraform/oidc.tf` — GitHub OIDC IdP + `troica-gha-ecr-push` IAM role (assume 조건: msa-* repo main 브랜치 한정)
+- `terraform/ecr.tf` — KMS key + 6 ECR repos (D6 후 notification 제외) + lifecycle (최근 30 이미지)
+- `terraform/vpc-endpoint.tf` — SG + ECR Interface × 2 + S3 Gateway endpoint
+- terraform fmt + validate 통과
+
+**PR 2 `phase-0/kubelet-ecr-credential-provider`** (stacked on PR 1, commit `0d5e881`):
+- `terraform/iam.tf` — node role에 `AmazonEC2ContainerRegistryReadOnly` attach
+- `terraform/inventory.tftpl` + `terraform/ansible.tf` — `aws_account_id`, `aws_region` ansible inventory 주입
+- `ansible/configuration/credential-provider-config.yaml.j2` — kubelet CredentialProviderConfig 템플릿
+- `ansible/ecr-credential-provider-setup.yaml` — 신규 playbook (다운로드 + 배포 + drop-in + kubelet 재시작)
+- `ansible/main.yaml` — argocd-setup 다음에 import
+
+비용: KMS $1 + ECR Interface × 2 ≈ $14 = **약 $15-25/월**.
+
+사용자 액션 (apply 절차):
+1. PR 1 머지 → `cd terraform && terraform apply`
+2. terraform output 확인 → GitHub Org Secrets `AWS_ACCOUNT_ID`, `MANIFEST_PAT` 등록
+3. GitHub Org Variable `AWS_DEPLOYMENTS_ENABLED=true` 등록 → **R-19 해결, 6 서비스 CI push-gated job 일괄 활성**
+4. PR 2 머지 → `terraform apply` (iam attach 반영) → `ansible-playbook -i ../ansible/inventory.ini ../ansible/main.yaml`
+5. (matter of choice) `applications/values/<service>/values.yaml`의 image.repository placeholder ACCOUNT_ID를 실제 값으로 일괄 update (PR 1 output의 ecr_registry_url 사용)
+
 ---
 
 ## SPEC 변경 이력
@@ -288,7 +326,8 @@ R-06 검증 완료:
 | R-16 | Kotlin 2.3.x + Gradle 9.x `BuildUtilKt.clearJarCaches()` 버그 | toolchain | Kotlin 2.3.20/2.3.21 + Gradle 9.0/9.5 모두 `ClasspathEntrySnapshotter$Settings` `NoClassDefFoundError`. 워크어라운드 3종(`runViaBuildToolsApi=false`, `useClasspathSnapshot=false`, `incremental=false`) 전부 무효. JetBrains upstream 이슈로 보임 | Kotlin 2.4.x 또는 2.3.22+ release 후 재시도. 그 전에는 2.1.0 + 8.10.2 고정 |
 | R-17 | common-libs v0.2.0 publish 후 order-service deps 재bump | upgrade 후속 | order-service는 현재 `com.troica.msa:*:0.2.0-SNAPSHOT`. common-libs v0.2.0 태그 push로 GH Packages publish 후 별도 PR로 `:0.2.0`으로 변경 (Phase 3 v0.1.0 때와 동일 패턴) | 사용자 v0.2.0 태그 push 후 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 | 일정 | 현재 3.5.13 사용. 6월 30일 이후 보안 패치 OSS 미제공. Phase 6 마무리 후 3.6.x/4.0 마이그레이션 검토 (Spring Cloud 2025.1.x = Boot 4 라인) | Phase 6 종료 시점 또는 EOL 2주 전 |
-| R-19 | CI push-gated step의 AWS_DEPLOYMENTS_ENABLED 게이트 | Phase 3 후속 | order-service 머지 후 main CI가 OIDC AssumeRole 실패로 영구 빨간 상태 → 팀이 "원래 빨갛다"에 익숙해지는 위험. `vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 가드 추가로 변수 미설정 시 push-gated step skip → main CI 녹색. Phase 0 완료 후 Org 레벨 변수를 `true`로 set하면 자동 활성 | **Phase 0 완료 후 GitHub Org Variables에 `AWS_DEPLOYMENTS_ENABLED=true` 설정** |
+| R-19 | CI push-gated step의 AWS_DEPLOYMENTS_ENABLED 게이트 | Phase 3 후속 | order-service 머지 후 main CI가 OIDC AssumeRole 실패로 영구 빨간 상태 → 팀이 "원래 빨갛다"에 익숙해지는 위험. `vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 가드 추가로 변수 미설정 시 push-gated step skip → main CI 녹색. Phase 0 완료 후 Org 레벨 변수를 `true`로 set하면 자동 활성 | **Phase 0 PR 머지 + terraform apply + Org Variable 등록 시 자동 해결 (Phase 0 PR 산출물에 절차 명시)** |
+| R-26 | 매니페스트 values의 image.repository placeholder ACCOUNT_ID | Phase 0 후속 | 모든 `applications/values/<service>/values.yaml`의 `image.repository`가 `000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/...` placeholder. Phase 0 terraform output의 실제 account_id로 일괄 치환 필요 | Phase 0 apply 후 별도 매니페스트 PR로 sed 일괄 변경 |
 | R-20 | JitPack client-redis 운영 모드 | Phase 4 | 팀장님 별도 GitHub 레포 + JitPack publish 운영. 우리 통제 밖 — JitPack 빌드 실패 가능성, 버전 lifecyle 가시성 낮음. 모니터링 필요 시 dependabot/renovate로 버전 변경 알림만 | 운영 모니터링 |
 | R-21 | Q6 order state machine 확장 구현 | Phase 4 (#3) | `OrderLineItemStatus` enum 확장 + `checkTransitive` 갱신 + 새 Outbox 테이블(or 기존 일반화) + `order.confirmed`/`order.cancelled` 이벤트 발행자 | Phase 4 진행 중 |
 | R-22 | Q7 inventory Event Sourcing + Spring Batch worker | Phase 4 (#4) | `inventory-event`를 append-only 스토어로 변환 (processed flag 제거 또는 일관 유지). `@EnableBatchProcessing` + Job/Step. worker 프로파일 + 별도 K8s Deployment. spring-boot-starter-batch 의존성 추가 | Phase 4 진행 중 |
