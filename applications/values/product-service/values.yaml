@@ -1,0 +1,29 @@
+nameOverride: product-service
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/product-service
+  # tag는 환경별 values 에서 CI가 yq로 main-<sha7>로 교체 (AWS_DEPLOYMENTS_ENABLED 활성 후)
+
+service:
+  port: 8001          # base application.yaml의 SERVER_PORT default와 일치 (SPEC §1.4)
+
+envFrom:
+  - secretRef:
+      name: product-service-secrets        # DB password — ExternalSecrets로 채움
+  - configMapRef:
+      name: product-service-config         # DB host 등 비밀 아닌 환경값
+
+probes:
+  liveness:
+    path: /healthz                         # actuator base-path: / + path-mapping.health: healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true                            # Phase 5에서 Istio 도입 후 실효
+
+# product-service는 worker 분기 없음 (Outbox / Kafka 미사용)
+worker:
+  enabled: false
