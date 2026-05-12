@@ -1,5 +1,5 @@
 image:
-  tag: main-PLACEHOLDER
+  tag: main-ec4f5ee
 replicaCount: 2
 springProfilesActive: "prod"
 hpa:
