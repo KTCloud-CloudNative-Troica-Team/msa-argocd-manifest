@@ -120,9 +120,13 @@
 | R-03 | Traefik → Istio 교체 | ⏸ | Phase 5 본 작업 | Istio Gateway + VirtualService |
 | R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | ExternalSecrets Operator + AWS Secrets Manager (R-25 정식 해결과 묶음) | |
 | R-35 | Platform 배포 (a~g) | ⏸ | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets | Phase 5 본 작업, 비용 영향 大 |
-| R-27 | CI 파이프 최적화 | 📌 | (a) Gradle 중복 빌드 제거 (b) Docker BuildKit cache (c) Trivy DB cache TTL (d) Reusable workflow (e) paths-ignore (f) ECR login retry (g) Dependabot/Renovate | Phase 5 검증 끝나면 일괄 |
+| R-27 (a) | Gradle 중복 빌드 제거 (호스트 + Docker → Docker 단순화) | ✅ | 6 PR 머지 (product/auth/user/order/inventory/api-gateway의 `chore/r-27-*`) | 빌드 시간 ~5분 → **2분 25초** 검증 (product-service). Docker 3-stage → 2-stage, 호스트 bootJar 결과를 layered extract만. 부가: glibc base 불필요 (alpine만) → TROUBLESHOOTING §3.1 (Alpine musl) 자동 회피 |
+| R-27 (e) | `paths-ignore` (docs PR build skip) | ✅ | `msa-product-service chore/r-27-paths-ignore-and-dependabot` 머지 | `**.md`, `docs/**`, `LICENSE`, `.gitignore`, `.gitattributes` skip. 5개 서비스 + common-libs propagate는 Phase 5 후 (영향 작음) |
+| R-27 (g) | Dependabot 활성화 | ❌ 폐기 | `msa-product-service chore/remove-dependabot` 머지 (역삭제) | 첫 주에 7+개 자동 PR 폭주 → review 부담. Spring Boot BOM이 대부분 dep 관리 + Gradle bump가 Kotlin 2.1 toolchain 결정과 충돌. 추후 Renovate 또는 monthly check 같은 가벼운 대안 검토 |
+| R-27 (b/c/d/f) | BuildKit cache / Trivy DB cache / Reusable workflow / ECR retry | 📌 | (b) Docker BuildKit cache mount → -30~60s/2nd+ 빌드 (c) Trivy cache key 주 단위 → -1분/매일 첫 (d) 6 ci.yml 통합 (e) ECR login retry | Phase 5 검증 끝나면 일괄. (a) 검증 후 우선순위 낮음 |
 | R-28 | netty 4.2.x BOM 전환 → CVE-2026-42577 해제 | 📌 | Spring Boot 3.5.15+ 또는 reactor-netty 1.3.x 출시 모니터링 | 외부 의존성 |
-| R-20 | JitPack client-redis 모니터링 | 📌 | dependabot/renovate로 버전 변경 알림 | 팀장님 통제 외 |
+| R-20 | JitPack client-redis 모니터링 | 📌 | 버전 변경 알림 (monthly check) | 팀장님 통제 외, Dependabot 폐기됨 |
+| R-38 | common-libs `QuerydslConfig` final → Spring CGLIB proxy 실패 | ✅ | `msa-common-libs fix/r-38-kotlin-spring-plugin` 머지 + v0.3.1 publish + 6 서비스 의존성 bump | Kotlin은 모든 class 기본 final → @Configuration proxy 못 만듦. common/build.gradle.kts에 `kotlin("plugin.spring")` 추가로 자동 open. Phase 0 demo 시 CrashLoop의 진짜 원인이었음 |
 
 ---
 
