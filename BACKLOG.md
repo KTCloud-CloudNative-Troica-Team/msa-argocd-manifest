@@ -166,6 +166,7 @@ R-06 검증 완료:
 | 2026-05-12 | §12 msa-common-libs | 단일모듈 예시 → 멀티모듈 publish 패턴 + 빌드환경 §12.0.1 신설 | Phase 2 실제 구현 반영 |
 | 2026-05-12 | §13.2 Phase 2 작업 순서 | 단계 5개 → 9개로 확장 (멀티모듈, Protobuf codegen, Kotlin 2.1/Gradle 8.10 명시) | 실제 진행 결과 반영 |
 | 2026-05-12 | §13.3 Phase 3 작업 순서 | 단계 11개 → 17개로 확장. inventory-event 이전 항목을 제거 (해당 모듈은 inventory 도메인 — Phase 4 inventory-service로). worker 신규 구현 명시. gradlew 100755 항목 추가 | Phase 3 실제 진행 + R-07 해소 + Phase 2 교훈 반영 |
+| 2026-05-12 | §7 CI workflow Trivy 버전 | `aquasecurity/trivy-action@0.24.0` → `@v0.36.0` + 공급망 사고 주석 | R-14: 0.24.0 미존재 + 0.0.1~0.34.2 태그는 2026-03 공급망 사고로 compromised. post-incident 태그 핀 |
 
 ---
 
@@ -188,6 +189,8 @@ R-06 검증 완료:
 | R-11 | ~~GitHub Packages publish 실 검증 (common-libs)~~ | Phase 2 | ~~v0.1.0 태그 푸시 + publish 워크플로우 동작 검증~~ | **해결 (2026-05-12, 사용자 수행)** v0.1.0 publish 성공. 4 모듈 GH Packages에 게시. Phase 3 의존성을 `0.1.0`(stable)로 bump 완료 (`c1facfd`) |
 | R-12 | Phase 3 로컬 Docker build 미검증 | Phase 3 | 본 환경에 docker 미설치. Dockerfile은 SPEC §8 모델 + bootJar 매니페스트 검증으로 간접 신뢰. 실제 검증은 CI의 `docker build` step (Phase 0 후) 또는 사용자 로컬 docker 환경 | CI 첫 docker build step 실행 시 |
 | R-13 | Kafka 직렬화 JSON → Protobuf 마이그레이션 | Phase 3+ | Phase 3 스코프 폭주 방지를 위해 기존 JSON 유지. order-service는 common-libs:events 의존만 받음. wire 마이그레이션은 inventory-service와 동시 진행이 필요 (둘 다 바꿔야 양립 가능) | Phase 4 inventory-service 작업과 묶어서 |
+| R-14 | ~~SPEC §7 `aquasecurity/trivy-action@0.24.0` 미존재 + 보안 사고 범위~~ | SPEC §7, 모든 서비스 CI | ~~버전 미존재로 "Prepare all required actions"에서 실패 (`if` 조건 평가 전이라 conditional step도 영향). 게다가 2026-03-19 trivy-action 공급망 사고로 0.0.1~0.34.2 태그는 compromised~~ | **해결 (2026-05-12)** SPEC §7 + msa-order-service ci.yml을 `v0.36.0` (post-incident, v-prefix)로 핀. 추가 보안 강화 = SHA pin + Dependabot은 backlog 보류 |
+| R-15 | GitHub Actions 핀 정책 (SHA + Dependabot) | 보안 강화 | 현재 mutable tag 핀. 공급망 공격에 취약. 모든 actions를 commit SHA로 핀 + Dependabot/Renovate 도입 권장 | Phase 6 또는 별도 보안 트랙 |
 | P1-V | Phase 1 클러스터-사이드 검증 미수행 | 로컬 환경 | 로컬에 ArgoCD CRD 설치된 클러스터 미연결 → kubectl dry-run 불가. 오프라인 YAML 구조 검증만 통과 | Phase 0/2 인프라 준비 후 실 클러스터에서 `kubectl apply -f bootstrap/root-app.yaml --dry-run=server` 수행 |
 
 ---
