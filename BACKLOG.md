@@ -13,7 +13,25 @@
 
 ## 진행 중
 
-(없음)
+- **Phase 4 prep**: [`PHASE_4_RUNBOOK.md`](./PHASE_4_RUNBOOK.md) 추가, SPEC §1.4 포트 할당 표 추가. 팀장님 P0 답변 받자마자 서비스별 카드로 빠르게 실행 가능.
+
+---
+
+## 팀장님 보류 사항 (Phase 4 시작 전 결정 필요)
+
+모노레포 코드 점검 결과 SPEC과 어긋나거나 미구현 항목이 있어서 결정 필요. P0는 Phase 4 시작 직전 필수.
+
+| # | 우선순위 | 질문 | 옵션 | 영향 받는 R 항목 |
+|---|---------|------|------|-----------------|
+| Q1 | **P0** | `user-api-gateway`는 BFF인가 Spring Cloud Gateway인가? 코드는 BFF, SPEC §1.1은 SC Gateway | (a) BFF 보존 + SPEC 정정 / (b) SC Gateway 리라이트 / (c) 둘 다 (분리) | R-04 |
+| Q2 | **P0** | `user/auth/identification`을 어떤 deployable로 합칠 것인가? 모노레포에 합쳐진 app이 없음 + AuthRestController @RestController 구현 부재 | (a) 한 서비스로 통합 / (b) auth 별도 분리 / (c) 다른 의도 | (신규) |
+| Q3 | **P0** | JWT 검증 강제 활성화 시점? 현재 SecurityConfig는 `.permitAll()`로 검증 안 함 | (a) Phase 4 중 활성화 / (b) Phase 6 즈음 / (c) 영구 보류 | (신규) |
+| Q4 | P1 | Kafka 직렬화 JSON 유지 vs Protobuf 마이그레이션? | (a) JSON 유지 / (b) Protobuf 동시 마이그레이션 (양쪽 ~5 파일씩) | R-13 |
+| Q5 | P1 | Kafka 토픽명 모노레포 vs SPEC 표준? | (a) SPEC 표준(`order.pending` 등)으로 정렬 / (b) 모노레포 이름 유지 + SPEC 정정 | (신규) |
+| Q6 | P1 | SPEC §0 payment/shipping 시뮬레이션 — 실제 구현 의도? `OrderLineItemStatus`에 해당 상태 부재 | (a) state machine 확장 / (b) INVENTORY_RESERVED=CONFIRMED로 단순화 / (c) 별도 작업 | (신규) |
+| Q7 | P1 | `inventory-event` 모듈 — Event Sourcing vs Outbox? | (a) Outbox로 SPEC 정정 / (b) Event Sourcing 의도 (미완성) / (c) 다른 패턴 | (신규) |
+| Q8 | P2 | Notification 서비스 설계 — channel 분기 / 멱등성 / DLQ | (Phase 0 후) | R-05 |
+| Q9 | P2 | 모노레포 Kotlin 2.3.20 + Gradle 9.0.0 빌드 실패 인지 여부 | IntelliJ로만 빌드했는지 확인 | R-16 |
 
 ---
 
