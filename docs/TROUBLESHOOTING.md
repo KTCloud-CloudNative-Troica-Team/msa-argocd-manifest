@@ -128,6 +128,43 @@ implementation(project(":inventory-event"))
 
 ---
 
+### 1.7 Kotlin `@Configuration` class가 final → Spring CGLIB proxy 실패 (R-38)
+
+**증상**: Spring Boot startup 시 ApplicationContext 초기화 단계에서:
+```
+org.springframework.beans.factory.parsing.BeanDefinitionParsingException:
+  Configuration problem: @Configuration class 'QuerydslConfig' may not be final.
+  Remove the final modifier to continue.
+```
+
+Phase 0 demo 시 CrashLoopBackOff의 진짜 원인이었음 (DB 부재가 아니라 startup 자체 실패).
+
+**원인**:
+- Kotlin은 모든 class가 기본 **`final`**.
+- Spring `@Configuration`은 `@Bean` 메서드 호출 가로채기 위해 **CGLIB subclass proxy** 생성 → non-final 필요.
+- 모노레포에서는 Spring Boot main 모듈에 `kotlin-spring` plugin이 적용되어 transitive로 처리됐었음. polyrepo 이관 시 `common-libs:common` 모듈에 plugin 누락.
+
+**해결**: `common-libs/common/build.gradle.kts`에 `kotlin("plugin.spring")` 추가:
+```kotlin
+plugins {
+    kotlin("kapt")
+    kotlin("plugin.jpa")
+    kotlin("plugin.spring")    // 추가
+}
+```
+
+이 plugin이 컴파일 시 `@Configuration` / `@Component` / `@Service` / `@Repository` / `@Controller` 어노테이션이 붙은 클래스에 자동으로 `open` 부여 → publish된 .class가 non-final.
+
+**검증**: 새 버전 publish + consumer 서비스 의존성 bump 후 `docker run`에서:
+- 이전: `BeanDefinitionParsingException: 'QuerydslConfig' may not be final` ← 여기서 종료
+- 이후: `Bootstrapping Spring Data JPA repositories` → `Tomcat initialized` → `HikariPool-1 - Starting` → `Connection refused` (DB 없음, 정상)
+
+**재발 방지**:
+- 모든 신규 모듈 build.gradle.kts에 `kotlin("plugin.spring")` + (JPA entity 있으면) `kotlin("plugin.jpa")` 표준 적용.
+- common-libs `events` 모듈처럼 Spring 비사용 모듈은 plugin 불필요.
+
+---
+
 ## 2. 보안 / CVE
 
 ### 2.1 Trivy action `@0.24.0` 미존재 + 공급망 공격
@@ -261,18 +298,49 @@ net/http: request canceled while waiting for connection
 
 ---
 
-### 4.3 CI 빌드 ~4분 — 정상이지만 비효율
+### 4.3 CI 빌드 ~4분 → ~2.5분 (R-27 (a) 적용 후)
 
-**구성 요소**:
+**개선 전 구성 요소**:
 - Gradle 호스트 빌드 (테스트 포함): ~1.5분
 - Docker build (Gradle 내부 재실행): ~1.5분 (중복!)
 - Trivy DB 다운로드 (첫 회): ~1분 (vuln-db 92MB + java-db 865MB)
 - ECR push + manifest bump: ~30s
 
-**개선 여지** (R-27, Phase 5):
-- Gradle 중복 제거 → -1.5분
-- Docker BuildKit cache mount → -30~60s
-- Trivy cache key 주 단위 → -1분 (daily first-run only)
+**R-27 (a) 적용 (2026-05-12)**: Docker의 build stage 제거 → 호스트 bootJar 결과를 layered extract만. **product-service 검증: 4분 → 2분 25초**.
+
+**개선 후**:
+- Gradle 호스트 빌드: ~1.5분 (그대로)
+- Docker build (layered extract만): ~10s (Gradle 재실행 없음)
+- Trivy DB: ~30s (캐시 hit 시 ~5s)
+- ECR push + manifest bump: ~30s
+
+**잔여 개선 여지** (R-27, Phase 5+):
+- (b) Docker BuildKit cache mount → 호스트 빌드의 Gradle cache hit 시 -30~60s
+- (c) Trivy cache key 주 단위 → -1분 (daily first-run only)
+- (d) Reusable workflow — 6 ci.yml DRY (시간 절감보다는 유지보수)
+
+---
+
+### 4.4 Dependabot 활성화 직후 자동 PR 폭주 (R-27 (g) 폐기 사유)
+
+**증상**: 활성화 첫 주에 7+ 자동 PR 일괄 생성:
+- aws-actions/configure-aws-credentials 4 → 6
+- peter-evans/create-pull-request 7 → 8
+- actions/setup-java 4 → 5
+- docker/build-push-action 6 → 7
+- gradle-wrapper 8.10.2 → 9.5.0  ← 우리 toolchain 결정(R-09)과 충돌
+- actions/checkout 4 → 6
+- spring-boot-dependencies (build fail)
+
+**평가**:
+- review 부담 큰 반면 빌드 시간 절감과 무관 (R-27 본질에서 벗어남).
+- Spring Boot BOM이 transitive 의존성 다수 관리 → 대부분 BOM 버전 bump만 잡음.
+- 실제 CVE는 이미 Trivy가 빌드 단계에서 게이트.
+- Gradle 9.x bump는 Kotlin 2.1 toolchain 호환성 깨짐 → 잘못된 방향 권장.
+
+**결정**: Dependabot 폐기. 추후 Renovate (정교한 정책 가능) 또는 monthly check 검토.
+
+**참고**: GitHub의 "Automatically delete head branches" 설정도 같이 켜두면 자동 PR close 시 stale 브랜치 자동 정리.
 
 ---
 
