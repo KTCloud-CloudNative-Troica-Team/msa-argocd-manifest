@@ -1,0 +1,28 @@
+nameOverride: user-service
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/user-service
+
+service:
+  port: 8004          # SPEC §1.4 (gRPC 미노출 — REST 전용)
+
+envFrom:
+  - secretRef:
+      name: user-service-secrets        # DB password — ExternalSecrets
+  - configMapRef:
+      name: user-service-config         # DB host 등
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true
+
+# user-service는 worker 분기 없음
+worker:
+  enabled: false
