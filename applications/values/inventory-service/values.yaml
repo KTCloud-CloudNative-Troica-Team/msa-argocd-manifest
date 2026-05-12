@@ -1,0 +1,31 @@
+nameOverride: inventory-service
+
+image:
+  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/inventory-service
+
+service:
+  port: 8003          # SPEC §1.4
+
+envFrom:
+  - secretRef:
+      name: inventory-service-secrets        # DB password, Redis password — ExternalSecrets
+  - configMapRef:
+      name: inventory-service-config         # DB host, Redis host, Kafka host
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+
+istio:
+  enabled: true
+
+# Q7 — worker pod는 동일 이미지로 별도 Deployment.
+# dev/prod values 에서 enabled=true + profile 보정.
+worker:
+  enabled: false
+  springProfilesActive: "worker"
+  replicaCount: 1
