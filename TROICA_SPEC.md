@@ -605,19 +605,19 @@ jobs:
         run: echo "tag=main-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials (OIDC)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/troica-gha-ecr-push
           aws-region: ${{ env.AWS_REGION }}
 
       - name: ECR login
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build Docker image
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -629,7 +629,7 @@ jobs:
       # 사고 후 새 태그 컨벤션은 `v` prefix. v0.35.0 부터 안전. 본 PoC는 v0.36.0(2026-04-22) 핀.
       # 보안 강화 시 commit SHA 핀 + Dependabot/Renovate 도입 권장.
       - name: Trivy scan
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
@@ -639,13 +639,13 @@ jobs:
           ignore-unfixed: true
 
       - name: Push to ECR
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
         run: |
           docker push ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
 
   update-dev:
     needs: build-test
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -670,7 +670,7 @@ jobs:
 
   update-prod:
     needs: build-test
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && vars.AWS_DEPLOYMENTS_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -708,12 +708,15 @@ jobs:
 
 > **dev 자동 / prod 수동의 핵심**: `update-dev`는 main에 직접 push (즉시 ArgoCD sync), `update-prod`는 별도 브랜치 + PR 생성 (사람이 머지해야 sync). 동일 main 브랜치를 ArgoCD가 watch하므로 dev/prod ApplicationSet은 같은 commit history에서 다른 values 파일을 본다.
 
-### 7.1 GitHub Secrets에 설정해야 할 값
+> **`AWS_DEPLOYMENTS_ENABLED` 게이트**: 모든 push-gated step과 job에는 `&& vars.AWS_DEPLOYMENTS_ENABLED == 'true'` 가드를 추가한다. **Phase 0 완료 전에는 변수를 설정하지 않아 → 자동으로 skip → main CI는 build-test만 통과하고 녹색 유지.** Phase 0 산출물(OIDC role, ECR repo, Org Secrets)이 준비되면 GitHub Settings → Variables에서 변수를 `true`로 set하면 같은 워크플로우가 ECR push 흐름으로 즉시 동작. **Org 레벨에 설정하면 6개 서비스 레포 일괄 적용** — 권장.
 
-| Secret 명 | 용도 | 범위 |
-|----------|------|------|
-| `AWS_ACCOUNT_ID` | OIDC role ARN 조립 | Organization |
-| `MANIFEST_PAT` | manifest repo write 권한 PAT (fine-grained, `msa-argocd-manifest` contents:write + pull-requests:write) | Organization |
+### 7.1 GitHub Secrets / Variables에 설정해야 할 값
+
+| 명칭 | 종류 | 용도 | 범위 | 설정 시점 |
+|------|------|------|------|----------|
+| `AWS_ACCOUNT_ID` | Secret | OIDC role ARN 조립 | Organization | Phase 0 완료 시 |
+| `MANIFEST_PAT` | Secret | manifest repo write 권한 PAT (fine-grained, `msa-argocd-manifest` contents:write + pull-requests:write) | Organization | Phase 0 완료 시 |
+| `AWS_DEPLOYMENTS_ENABLED` | **Variable** | ECR push + manifest update 흐름 활성화 게이트. `true` 일 때만 push-gated step/job 실행 | Organization (권장) | Phase 0 완료 후 변수를 `true`로 설정 |
 
 `GITHUB_TOKEN`은 자동 발급, 별도 등록 불필요.
 
