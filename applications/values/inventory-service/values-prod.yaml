@@ -1,5 +1,5 @@
 image:
-  tag: main-PLACEHOLDER
+  tag: main-07c1e07
 replicaCount: 3
 springProfilesActive: "prod"
 hpa:
@@ -14,7 +14,6 @@ resources:
   limits:
     cpu: 2000m
     memory: 2Gi
-
 worker:
   enabled: true
   springProfilesActive: "prod,worker"
