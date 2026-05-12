@@ -1,5 +1,5 @@
 image:
-  tag: main-PLACEHOLDER
+  tag: main-3b392e4
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
