@@ -1,9 +1,15 @@
 # platform 레이어의 App-of-Apps root.
-# include 글로브로 platform/*/application.yaml, platform/*/*/application.yaml 만 sync.
+# 모든 깊이에서 application.yaml 파일만 sync (doublestar glob).
 # 각 컴포넌트는 자체 sync-wave annotation으로 순서 강제 (CRD → operator → workload).
 #
 # Phase 1 시점: platform/ 하위에 application.yaml이 아직 없으므로 sync 대상 0건.
 #               Phase 5에서 cert-manager / istio / observability / kafka / postgres 등이 추가된다.
+#
+# R-37: 이전 버전은 `directory.include: '{*/application.yaml,*/*/application.yaml}'`
+# brace expansion 사용 → R-31과 동일한 ArgoCD glob 미지원 문제. `**/application.yaml`
+# doublestar 패턴으로 전환 (모든 디렉토리 깊이 대응).
+# 컨벤션: platform/<component>/application.yaml은 ArgoCD CR (Application/AppSet 등).
+# helm values 등 sync 대상 아닌 yaml은 application.yaml 외 이름으로 두거나 별도 디렉토리.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,7 +25,7 @@ spec:
     path: platform
     directory:
       recurse: true
-      include: '{*/application.yaml,*/*/application.yaml}'
+      include: '**/application.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
