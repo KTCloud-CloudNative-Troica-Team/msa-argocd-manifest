@@ -1,7 +1,7 @@
 nameOverride: inventory-service
 
 image:
-  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/inventory-service
+  repository: 601766312629.dkr.ecr.ap-northeast-2.amazonaws.com/msa/inventory-service
 
 service:
   port: 8003          # SPEC §1.4

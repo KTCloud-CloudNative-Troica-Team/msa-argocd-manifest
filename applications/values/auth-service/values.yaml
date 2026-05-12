@@ -1,7 +1,7 @@
 nameOverride: auth-service
 
 image:
-  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/auth-service
+  repository: 601766312629.dkr.ecr.ap-northeast-2.amazonaws.com/msa/auth-service
 
 service:
   port: 8005          # SPEC §1.4 (notification 폐기 → auth로 재할당)

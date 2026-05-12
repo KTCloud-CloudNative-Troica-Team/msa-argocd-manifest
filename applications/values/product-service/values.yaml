@@ -1,7 +1,7 @@
 nameOverride: product-service
 
 image:
-  repository: 000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/msa/product-service
+  repository: 601766312629.dkr.ecr.ap-northeast-2.amazonaws.com/msa/product-service
   # tag는 환경별 values 에서 CI가 yq로 main-<sha7>로 교체 (AWS_DEPLOYMENTS_ENABLED 활성 후)
 
 service:
