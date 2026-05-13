@@ -66,10 +66,10 @@ flowchart TB
 
   subgraph KafkaBox["🟣 Kafka Cluster — 서비스 간 통신의 유일한 경로 (wire = JSON, ADR-0003·0004)"]
     direction LR
-    TopicPending["📨 order.pending"]
-    TopicReserved["📨 order.inventory-reserved"]
-    TopicConfirmed["📨 order.confirmed"]
-    TopicCancelled["📨 order.cancelled"]
+    TopicPending["📨 order-pending"]
+    TopicReserved["📨 order-inventory-reserved"]
+    TopicConfirmed["📨 order-confirmed"]
+    TopicCancelled["📨 order-cancelled"]
   end
 
   Client -->|HTTPS| GW
@@ -145,10 +145,10 @@ flowchart TB
 
 | 토픽 | 발행자 | 구독자 | 의미 |
 |---|---|---|---|
-| `order.pending` | order Outbox worker | inventory-service | 주문 생성 — 재고 예약 요청 |
-| `order.inventory-reserved` | inventory-service | order-service | 재고 예약 완료/실패 응답 |
-| `order.confirmed` | order Outbox worker | (terminal) | 주문 확정 |
-| `order.cancelled` | order Outbox worker | (terminal) | 주문 취소 |
+| `order-pending` | order Outbox worker | inventory-service | 주문 생성 — 재고 예약 요청 |
+| `order-inventory-reserved` | inventory-service | order-service | 재고 예약 완료/실패 응답 |
+| `order-confirmed` | order Outbox worker | (terminal) | 주문 확정 |
+| `order-cancelled` | order Outbox worker | (terminal) | 주문 취소 |
 
 → ADR-0006 (order 7-state machine), ADR-0007 (inventory Event Sourcing + Batch)
 
