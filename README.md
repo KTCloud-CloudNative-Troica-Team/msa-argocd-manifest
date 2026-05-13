@@ -2,7 +2,6 @@
 
 Troica Market Service MSA의 **GitOps 매니페스트 단일 진실의 원천**.
 
-> 프로젝트 계획서 (실제 구현 반영 갱신본): [docs/PROJECT_PLAN.md](./docs/PROJECT_PLAN.md)
 > SPEC: [docs/TROICA_SPEC.md](./docs/TROICA_SPEC.md)
 > 작업 백로그: [docs/BACKLOG.md](./docs/BACKLOG.md)
 > 트러블슈팅: [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)
