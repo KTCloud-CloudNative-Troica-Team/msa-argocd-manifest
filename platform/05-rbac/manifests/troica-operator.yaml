@@ -1,0 +1,77 @@
+# Operator: market-{dev,prod} namespace의 Deployment 수정 + Pod 조회
+# - ClusterRole이 아닌 Role + RoleBinding으로 namespace 한정 (평가 기준 명시)
+# - 두 namespace에 동일 Role 정의 (NS-scoped 리소스는 namespace 마다 별도 매니페스트 필요)
+
+# ===== market-dev =====
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: troica-operator
+  namespace: market-dev
+  labels:
+    troica.io/role: operator
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "statefulsets/scale"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps", "services", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]                # Pod 재시작용
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: troica-operator-binding
+  namespace: market-dev
+subjects:
+  - kind: Group
+    name: troica-operators
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: troica-operator
+  apiGroup: rbac.authorization.k8s.io
+
+# ===== market-prod =====
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: troica-operator
+  namespace: market-prod
+  labels:
+    troica.io/role: operator
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "statefulsets/scale"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps", "services", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: troica-operator-binding
+  namespace: market-prod
+subjects:
+  - kind: Group
+    name: troica-operators
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: troica-operator
+  apiGroup: rbac.authorization.k8s.io
