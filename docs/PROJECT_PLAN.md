@@ -675,13 +675,18 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 - **R-49** NetworkPolicy + 통신 차단 검증 [심화 (3)-3]
 
 **평가요소 선택 cover (Phase 6)** — 모두 📌
-- **R-50** Rate Limit 실 구현 [기본 (2)-5]
+- **R-50** Rate Limit 실 구현 [기본 (2)-5] — ✅ 머지됨 (api-gateway)
 - **R-51** KEDA Kafka lag ScaledObject [심화 (1)-4]
 - **R-52** ArgoCD Rollouts Canary [심화 (1)-5]
 - **R-53** OPA Gatekeeper [심화 (2)-5]
 - **R-54** OWASP ZAP DAST + SARIF [심화 (2)-4]
 - **R-55** Falco DaemonSet [심화 (3)-5]
 - **R-56** Incident Response 5단계 [심화 (3)-4]
+- **R-58** Testcontainers 통합 테스트 [기본 (3)-4 선택]
+
+**평가요소 기본 cover 보강 (2026-05-14 추가)**
+- **R-57** JUnit 단위 테스트 (7 polyrepo, ~48 케이스) [기본 (3)-1 필수] — ✅ 머지됨
+- **ADR-0011** SonarCloud Quality Gate 정책 — 무료 plan 제약 + `wait=false` 결정 [심화 (2)-1 보강]
 
 ---
 
@@ -693,3 +698,4 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | 2026-05-13 | **실제 구현 기준 갱신본** | Phase 0-4 완료 + ADR 0001-0008 + 다이어그램 3종 반영 |
 | 2026-05-13 | **msa-frontend 반영** | 10번째 polyrepo `msa-frontend` (팀장님 작성, React 19 + Vite 8 + TS 6 + TanStack + MUI + Tailwind + Zustand) 추가. 호스팅 배포는 R-40 Phase 6 |
 | 2026-05-13 | **평가요소 100% cover 보강** | KT Cloud Tech UP 2기 평가 필수 18개 항목을 R-41~R-49 (Phase 5) + R-50~R-56 (Phase 6 선택) 으로 분해. Epic E13(확장성)/E14(DevSecOps)/E15(보안 아키텍처) 신설. BACKLOG에 "평가요소 매핑" 인덱스 섹션 추가 |
+| 2026-05-14 | **R-57 단위 테스트 + ADR-0011 SonarCloud 정책** | (1) R-57 7 polyrepo 단위 테스트 ~48 케이스 머지 — common-libs/product/user/inventory/order/auth/api-gateway. 도메인 entity / state machine / JWT round-trip / Circuit Breaker Fallback 위주. 평가 기본 (3)-1 ✅ (2) R-45 sonarcloud.io 셋업 완료 (Troica Org + 7 프로젝트 import + Automatic Analysis OFF). 무료 plan custom Quality Gate 적용 불가 발견 → ADR-0011 — `qualitygate.wait=false` + Sonar way Dashboard 시각화 + Hotspot Review 절차 정립. 평가 심화 (2)-1 ✅ (3) R-58 신설 — Testcontainers 통합 테스트 (Phase 6 선택). 필수 cover 13/18 → 14/18 |
