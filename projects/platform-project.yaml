@@ -9,16 +9,24 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   description: Platform components (CRDs, operators, observability, kafka, postgres, redis, istio, cert-manager)
-  # Phase 5에서 추가되는 외부 chart repo는 필요 시 여기에 등록.
+  # Phase 5 추가 chart repo — platform/*/application.yaml 의 source.repoURL 과
+  # 정확히 일치해야 함 (ArgoCD 의 sourceRepos 보안 제약). URL trailing slash 까지
+  # 정확히 매칭. mismatch 시 InvalidSpecError 로 sync 차단.
   sourceRepos:
     - https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
     - https://prometheus-community.github.io/helm-charts
-    - https://strimzi.io/charts
+    - https://strimzi.io/charts/
     - https://cloudnative-pg.github.io/charts
     - https://grafana.github.io/helm-charts
     - https://charts.jetstack.io
     - https://istio-release.storage.googleapis.com/charts
-    - https://ot-container-kit.github.io/redis-operator
+    # R-35 platform 매니페스트 추가 시 누락됐던 외부 chart repo 들.
+    # platform/40-redis-operator → Spotahome (ot-container-kit 가 아님)
+    - https://spotahome.github.io/redis-operator
+    # platform/40-external-secrets-operator
+    - https://charts.external-secrets.io
+    # platform/05-ebs-csi (R-35 보완, self-managed kubeadm 용 EBS CSI)
+    - https://kubernetes-sigs.github.io/aws-ebs-csi-driver
   destinations:
     - server: https://kubernetes.default.svc
       namespace: "*"
