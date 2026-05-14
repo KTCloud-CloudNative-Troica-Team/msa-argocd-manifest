@@ -1,0 +1,36 @@
+# R-35 (c): Strimzi Kafka CR + KafkaTopic CR 의 실 매니페스트 sync.
+# Sync Wave 2: Strimzi Operator (Sync Wave 1) 가 CRD 등록 + reconcile loop 시작
+# 후 sync.
+#
+# 평가 cover:
+#   - 기본 (1)-4 (선택) Kafka StatefulSet (KRaft 3 broker)
+#   - 기본 (3)-6 (선택) Kafka consumer lag exporter
+#   - 4 토픽 (ADR-0004): order.pending / order.inventory-reserved / order.confirmed
+#     / order.cancelled
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/50-kafka-cluster/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kafka
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

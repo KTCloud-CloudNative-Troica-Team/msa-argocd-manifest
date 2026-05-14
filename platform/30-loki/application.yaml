@@ -1,0 +1,82 @@
+# R-35 (f): Loki — 로그 집계 + Grafana datasource.
+# Sync Wave 0: kube-prometheus-stack 과 동시 sync. observability namespace 공유.
+#
+# PoC 규모라 single-binary 모드 (monolithic). 운영 단계는 SimpleScalable 또는
+# Distributed 모드로 전환 검토 (R-18 운영 전환 항목 일부).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: loki
+    repoURL: https://grafana.github.io/helm-charts
+    targetRevision: 6.18.0
+    helm:
+      releaseName: loki
+      values: |
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false
+          commonConfig:
+            replication_factor: 1
+          storage:
+            type: filesystem
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: loki_index_
+                  period: 24h
+          limits_config:
+            retention_period: 168h  # 7d
+        singleBinary:
+          replicas: 1
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+        # SimpleScalable / Distributed 모드의 컴포넌트는 비활성화
+        backend:
+          replicas: 0
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        # Promtail 별도 chart 로 분리. 본 chart 는 Loki 만.
+        monitoring:
+          selfMonitoring:
+            enabled: false
+          lokiCanary:
+            enabled: false
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+        # ServiceMonitor — kube-prometheus-stack 이 scrape
+        serviceMonitor:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

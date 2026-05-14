@@ -1,0 +1,59 @@
+# KafkaTopic CR × 4 — ADR-0004 표준 토픽명 (dot 구분, multi-word 는 hyphen).
+# 본 매니페스트가 적용되면 Strimzi entity-operator 가 Kafka 클러스터에 실 토픽 생성.
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: order.pending
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: market-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000        # 7d
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: order.inventory-reserved
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: market-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: order.confirmed
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: market-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    # terminal 이벤트 — 추후 분석 용도로 더 길게 유지 (30d)
+    retention.ms: 2592000000
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: order.cancelled
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: market-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 2592000000
+    min.insync.replicas: 2

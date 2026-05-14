@@ -1,0 +1,45 @@
+# R-35 (a): CloudNativePG Operator — PostgreSQL HA / 자동 failover / WAL backup.
+# 본 operator 가 Cluster CR (platform/50-postgres-clusters/) 를 watch 하며 실 Postgres
+# StatefulSet 생성.
+#
+# Sync Wave 1: cert-manager(-10) / istio(-4) 다음, cluster instance 직전.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: cloudnative-pg
+    repoURL: https://cloudnative-pg.github.io/charts
+    targetRevision: 0.22.1
+    helm:
+      releaseName: cnpg
+      values: |
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            memory: 400Mi
+        # Prometheus ServiceMonitor 자동 생성
+        monitoring:
+          podMonitorEnabled: true
+          grafanaDashboard:
+            create: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,0 +1,32 @@
+# R-35 (a): PostgreSQL × 6 — CNPG Cluster CR 매니페스트 sync.
+# Sync Wave 2: CNPG Operator (Sync Wave 1) reconcile 시작 후.
+#
+# 평가 기본 (1)-3 (필수) Database per Service 완전 cover — auth / user / product /
+# order / inventory 각자 독립 Postgres + (예비 1개 = grafana/sonar 자체 등 운영 용).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-clusters
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/50-postgres-clusters/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: databases
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

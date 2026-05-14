@@ -1,0 +1,156 @@
+# CNPG Cluster CR × 6 — 서비스별 독립 Postgres (Database per Service).
+#
+# 각 Cluster 는:
+#   - instances: 2 (primary + replica, PoC 규모)
+#   - storage: 10Gi EBS gp3
+#   - bootstrap.initdb: 초기 DB 이름 / 사용자 — credentials 는 ExternalSecret 으로
+#     주입 (platform/91-external-secrets-config/)
+#
+# PoC 규모라 단일 DB instance + replica 1. 운영 단계는 instances=3 + read replica
+# 별도 검토.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: auth-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: auth
+      owner: auth
+      secret:
+        name: auth-db-credentials  # ExternalSecret 으로 동기화
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: user-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: user
+      owner: user
+      secret:
+        name: user-db-credentials
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: product-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: product
+      owner: product
+      secret:
+        name: product-db-credentials
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: order-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: order
+      owner: order
+      secret:
+        name: order-db-credentials
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: inventory-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: inventory
+      owner: inventory
+      secret:
+        name: inventory-db-credentials
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true
+---
+# 6 번째 — Grafana / SonarQube 자체 또는 운영 메타 DB. SPEC §0 의 "PostgreSQL × 6"
+# 카운트에 부합. 별도 도메인 없음 — 운영 용도.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ops-db
+  namespace: databases
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: ops
+      owner: ops
+      secret:
+        name: ops-db-credentials
+  storage:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  monitoring:
+    enablePodMonitor: true

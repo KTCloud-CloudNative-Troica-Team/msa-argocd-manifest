@@ -1,0 +1,38 @@
+# R-25 / R-33: ExternalSecret 실 매니페스트 — AWS Secrets Manager 에서 Postgres
+# credentials / JWT secret / Redis password / Slack webhook URL 등 동기화.
+#
+# Sync Wave 3: ExternalSecretsOperator (Sync Wave 1) + cluster instances
+# (Sync Wave 2, ExternalSecret 이 만든 Secret 을 mount) 다음.
+#
+# 평가 cover:
+#   - 심화 (3)-2 (필수) ServiceAccount + Role/RoleBinding 최소 권한 — secret rotation
+#     automated, GitOps 에 평문 미저장
+#   - R-25 JWT secret 정식 외부화 (placeholder → 실 secret)
+#   - R-33 6×2 Secret + ConfigMap 실값
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/91-external-secrets-config/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

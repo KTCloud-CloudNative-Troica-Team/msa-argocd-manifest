@@ -1,0 +1,43 @@
+# R-35 (b): Spotahome Redis Operator — RedisFailover CR (Redis Sentinel 기반 HA).
+# 본 operator 가 platform/50-redis-cluster/ 의 RedisFailover CR 를 watch 함.
+#
+# PoC 규모 — Sentinel 1 + Redis master 1 + replica 1 패턴 (총 3 pod / 인스턴스).
+# 운영 단계 Cluster 모드 전환은 R-18 후속.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: redis-operator
+    repoURL: https://spotahome.github.io/redis-operator
+    targetRevision: 3.2.13
+    helm:
+      releaseName: redis-operator
+      values: |
+        replicas: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 200Mi
+        # Prometheus ServiceMonitor — Sentinel + Redis exporter metrics
+        monitoring:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redis-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

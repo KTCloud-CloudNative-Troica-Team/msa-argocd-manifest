@@ -1,0 +1,70 @@
+# Spotahome RedisFailover CR × 2.
+#
+# 1) auth-redis — auth-service 의 refresh-token / blacklist 저장
+# 2) inventory-redis — inventory-service 의 stock cache + R-50 Rate Limit Token Bucket
+#    (api-gateway 가 reactive 클라이언트로 접근)
+---
+apiVersion: databases.spotahome.com/v1
+kind: RedisFailover
+metadata:
+  name: auth-redis
+  namespace: redis
+spec:
+  sentinel:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+  redis:
+    replicas: 2     # master 1 + replica 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    storage:
+      persistentVolumeClaim:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    # Prometheus exporter — kube-prometheus-stack 이 scrape
+    exporter:
+      enabled: true
+---
+apiVersion: databases.spotahome.com/v1
+kind: RedisFailover
+metadata:
+  name: inventory-redis
+  namespace: redis
+spec:
+  sentinel:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+  redis:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    storage:
+      persistentVolumeClaim:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    exporter:
+      enabled: true

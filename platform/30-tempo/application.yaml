@@ -1,0 +1,66 @@
+# R-35 (f): Tempo — distributed tracing backend. OpenTelemetry SDK / Istio sidecar
+# 가 trace 를 보내고, Grafana datasource 로 시각화.
+#
+# Sync Wave 0: Loki / Prometheus 와 동시 sync.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: tempo
+    repoURL: https://grafana.github.io/helm-charts
+    targetRevision: 1.18.0
+    helm:
+      releaseName: tempo
+      values: |
+        # 단일 binary 모드 — PoC 규모
+        tempo:
+          retention: 168h     # 7d
+          storage:
+            trace:
+              backend: local
+              local:
+                path: /var/tempo/traces
+          receivers:
+            jaeger:
+              protocols:
+                thrift_http:
+                  endpoint: 0.0.0.0:14268
+                grpc:
+                  endpoint: 0.0.0.0:14250
+            zipkin:
+              endpoint: 0.0.0.0:9411
+            otlp:
+              protocols:
+                http:
+                  endpoint: 0.0.0.0:4318
+                grpc:
+                  endpoint: 0.0.0.0:4317
+        persistence:
+          enabled: true
+          size: 10Gi
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        serviceMonitor:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
