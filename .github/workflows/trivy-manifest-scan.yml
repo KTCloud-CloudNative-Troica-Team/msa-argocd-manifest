@@ -70,10 +70,16 @@ jobs:
           category: trivy-config
 
       # 발견된 보안 위반을 Slack #security-report 채널에도 발송 (R-47).
-      # SLACK_SECURITY_WEBHOOK_URL은 Org Secret로 등록 필요.
-      # 실패한 경우에만 발송하여 노이즈 최소화함.
+      # SLACK_SECURITY_WEBHOOK_URL 은 Org Secret 으로 등록 필요. 미설정 상태에서는
+      # slack-github-action 이 빈 webhook 으로 fail 함 — continue-on-error: true 로
+      # workflow 전체에 영향 X (어차피 trivy step 이 이미 fail 상태).
+      #
+      # 주의: GitHub Actions 의 `if:` 표현식 안에서 `secrets.*` 직접 참조 불가 (보안
+      # 정책). secrets 존재 여부 체크 는 step 의 env 또는 별도 boolean job 으로 노출
+      # 후에야 가능하므로 단순히 if: failure() 로 작성하고 continue-on-error 로 보정.
       - name: Notify Slack on failure
-        if: failure() && secrets.SLACK_SECURITY_WEBHOOK_URL != ''
+        if: failure()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.27.0
         with:
           webhook-type: incoming-webhook
