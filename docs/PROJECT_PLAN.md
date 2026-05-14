@@ -491,10 +491,15 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | **E10. Service Mesh** | 심화 | Istio 설치 (Argo CD App-of-Apps로 관리, Sync Wave -5/-4), Envoy Sidecar 주입, mTLS, 트래픽 시프트 | ⏸ Phase 5 (R-03) |
 | **E11. 관측성** | 심화 | OpenTelemetry, Prometheus, Tempo, Loki, Mimir, Grafana 대시보드 | ⏸ Phase 5 |
 | **E12. 알림** | 심화 | Kafka consumer lag 알림, AlertManager → Slack/PagerDuty (별도 notification 서비스 폐기, ADR-0001) | ⏸ Phase 5 |
+| **E13. 확장성 강화** | 심화 | **PodDisruptionBudget (필수)** + KEDA + ArgoCD Rollouts Canary | ⏸ Phase 5 (R-43) / 📌 Phase 6 (R-51/R-52) |
+| **E14. DevSecOps** | 심화 | **SonarQube 80% 게이트 (필수)** + **Trivy config 매니페스트 스캔 (필수)** + **Slack `#security-report` (필수)** + OPA Gatekeeper + OWASP ZAP | ⏸ Phase 5 (R-45/R-46/R-47) / 📌 Phase 6 (R-53/R-54) |
+| **E15. 보안 아키텍처** | 심화 | **K8s RBAC 역할 분리 (필수)** + **서비스별 ServiceAccount + Role/RoleBinding (필수)** + **NetworkPolicy + 차단 테스트 (필수)** + Falco + Incident Response 5단계 | ⏸ Phase 5 (R-48/R-49) / 📌 Phase 6 (R-55/R-56) |
 
 ### 7.2 우선순위 기준
 
-**MoSCoW** 방식 — Must(기본 E1~E8) → Should(E9~E10) → Could(E11) → Won't(이번 스프린트 제외)
+**MoSCoW** 방식 — Must(기본 E1~E8 + 심화 필수 E13/E14/E15) → Should(E9~E12) → Could(심화 선택) → Won't(이번 스프린트 제외)
+
+> **평가요소 100% cover 원칙**: KT Cloud Tech UP 2기 발표 평가의 **필수 항목 18개 (기본 9 + 심화 9)** 는 모두 R-NN 매핑 + Phase 5까지 완료 대상. 자세한 인덱스는 [BACKLOG.md "평가요소 매핑" 섹션](./BACKLOG.md#평가요소-매핑-kt-cloud-tech-up-2기-발표).
 
 ### 7.3 Phase 진행 (2026-05-13 기준)
 
@@ -646,6 +651,7 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 
 ### 추적 중인 R 항목 (Phase 5+ 대상)
 
+**기존 항목 (운영 / 의존성)**
 - **R-03** Traefik → Istio 교체 (Phase 5)
 - **R-08** 모노레포 archive (Phase 6)
 - **R-18** Spring Boot 3.5 EOL 2026-06-30
@@ -657,6 +663,26 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 - **R-39** msa-frontend 신규 레포 (팀장님 작성, ✅ Phase 4 완료)
 - **R-40** msa-frontend 정적 호스팅 배포 (S3+CloudFront+Route 53, Phase 6)
 
+**평가요소 필수 cover (Phase 5)** — 모두 ⏸
+- **R-41** K8s 디스커버리 검증 + 장애 격리 시나리오 코드 [기본 (2)-1, (2)-3]
+- **R-42** Postman + Newman E2E + Prometheus + Grafana [기본 (3)-2, (3)-3]
+- **R-43** PodDisruptionBudget templates [심화 (1)-3]
+- **R-44** 독립 배포 E2E + API GW ↔ Service Mesh 협업 [심화 (1)-1, (1)-2]
+- **R-45** SonarQube + 80% 게이트 [심화 (2)-1]
+- **R-46** Trivy config 매니페스트 스캔 [심화 (2)-2]
+- **R-47** Slack `#security-report` 보안 채널 [심화 (2)-3]
+- **R-48** RBAC 역할 분리 + ServiceAccount Role/RoleBinding [심화 (3)-1, (3)-2]
+- **R-49** NetworkPolicy + 통신 차단 검증 [심화 (3)-3]
+
+**평가요소 선택 cover (Phase 6)** — 모두 📌
+- **R-50** Rate Limit 실 구현 [기본 (2)-5]
+- **R-51** KEDA Kafka lag ScaledObject [심화 (1)-4]
+- **R-52** ArgoCD Rollouts Canary [심화 (1)-5]
+- **R-53** OPA Gatekeeper [심화 (2)-5]
+- **R-54** OWASP ZAP DAST + SARIF [심화 (2)-4]
+- **R-55** Falco DaemonSet [심화 (3)-5]
+- **R-56** Incident Response 5단계 [심화 (3)-4]
+
 ---
 
 ## 변경 이력
@@ -666,3 +692,4 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | 2026-04-24 | 원본 계획서 작성 | KT Cloud Tech UP 2기 제출본 |
 | 2026-05-13 | **실제 구현 기준 갱신본** | Phase 0-4 완료 + ADR 0001-0008 + 다이어그램 3종 반영 |
 | 2026-05-13 | **msa-frontend 반영** | 10번째 polyrepo `msa-frontend` (팀장님 작성, React 19 + Vite 8 + TS 6 + TanStack + MUI + Tailwind + Zustand) 추가. 호스팅 배포는 R-40 Phase 6 |
+| 2026-05-13 | **평가요소 100% cover 보강** | KT Cloud Tech UP 2기 평가 필수 18개 항목을 R-41~R-49 (Phase 5) + R-50~R-56 (Phase 6 선택) 으로 분해. Epic E13(확장성)/E14(DevSecOps)/E15(보안 아키텍처) 신설. BACKLOG에 "평가요소 매핑" 인덱스 섹션 추가 |

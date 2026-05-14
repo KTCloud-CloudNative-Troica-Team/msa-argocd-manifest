@@ -133,13 +133,24 @@
 
 ---
 
-## Phase 5 — Platform 배포 + 운영 강화 (대기)
+## Phase 5 — Platform 배포 + 운영 강화 + 평가요소 100% (대기)
+
+> **평가요소 cover**: 본 Phase는 KT Cloud Tech UP 2기 발표 평가요소 (기본·심화 필수 항목)를 100% 충족시키기 위한 작업을 포함한다. 각 task의 비고에 `평가 기본/심화 (N)-M` 형식으로 매핑.
 
 | ID | Task | 상태 | 산출물 | 비고 |
 |---|---|---|---|---|
-| R-03 | Traefik → Istio 교체 | ⏸ | Phase 5 본 작업 | Istio Gateway + VirtualService |
+| R-03 | Traefik → Istio 교체 | ⏸ | Phase 5 본 작업 | Istio Gateway + VirtualService. **평가 심화 (1)-2 일부** |
 | R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | ExternalSecrets Operator + AWS Secrets Manager (R-25 정식 해결과 묶음) | |
-| R-35 | Platform 배포 (a~g) | ⏸ | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets | Phase 5 본 작업, 비용 영향 大 |
+| R-35 | Platform 배포 (a~g) | ⏸ | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets | Phase 5 본 작업, 비용 영향 大. **평가 기본 (1)-4 (Kafka StatefulSet)** |
+| **R-41** | **K8s 디스커버리 검증 + 장애 격리 시나리오 코드** | ⏸ | (1) ClusterIP+DNS 서비스 간 통신 검증 task (`kubectl exec` + nslookup + curl) (2) Response Aggregate Fallback 코드 — order-service가 inventory 다운 시 부분 응답 반환 + 단위 테스트 | **평가 기본 (2)-1, (2)-3**. PROJECT_PLAN §6.8 문서를 코드로 구현 |
+| **R-42** | **테스트 자동화 + Observability** | ⏸ | (1) Postman Collection (회원가입→주문생성→재고예약→확정 E2E) (2) Newman CI 단계 추가 (각 polyrepo `.github/workflows/ci.yml` 또는 별도 e2e workflow) (3) Prometheus + Grafana 대시보드 (서비스별 에러율 + P99 latency) | **평가 기본 (3)-2, (3)-3** + 선택 (3)-5. R-35 (f) 와 연계 |
+| **R-43** | **PodDisruptionBudget templates** | ⏸ | `applications/charts/microservice/templates/pdb.yaml` + values에 `pdb.minAvailable: 2` 기본값. 클러스터 유지보수 시 검증 (drain 시뮬레이션) | **평가 심화 (1)-3**. 매니페스트 add 즉시 가능 (Phase 4 후속이라도 OK) |
+| **R-44** | **독립 배포 E2E + API GW ↔ Service Mesh 협업 검토** | ⏸ | (1) 한 서비스만 image bump → 다른 서비스 트래픽 무영향 E2E 검증 (Newman) (2) api-gateway (BFF + SC Gateway) + Istio (mTLS + VirtualService) 책임 분담 ADR 신설 | **평가 심화 (1)-1, (1)-2**. R-03 / R-35 (d) Istio 도입과 함께 |
+| **R-45** | **SonarQube CI 통합 + 커버리지 게이트** | ⏸ | (1) 6 polyrepo CI에 SonarQube scan step 추가 (cloud or self-host) (2) 커버리지 80% 미만 또는 Critical 이슈 발견 시 fail (3) `sonarqube-action` 으로 PR 코멘트 자동 게시 | **평가 심화 (2)-1**. Gradle JaCoCo 플러그인 연계 |
+| **R-46** | **Trivy config (Kubernetes 매니페스트 스캔)** | ⏸ | 본 레포 CI에 `trivy config` 단계 신설 — `applications/`, `platform/`, `bootstrap/`, `projects/` 디렉토리 스캔. privileged / runAsRoot / hostNetwork 발견 시 fail | **평가 심화 (2)-2**. 현재 Trivy는 image scan만 (각 polyrepo CI). 본 레포는 무 |
+| **R-47** | **Slack `#security-report` 보안 알림 채널** | ⏸ | (1) Slack에 `#security-report` 채널 생성 (2) AlertManager → severity=security 라우팅 (3) Trivy/SonarQube scan 결과를 GitHub Actions에서 webhook 발신 | **평가 심화 (2)-3**. 일반 알림 채널과 분리 |
+| **R-48** | **K8s RBAC (사람 + 서비스 양쪽) 역할 분리** | ⏸ | (1) **사람 RBAC**: 개발자(조회 전용 ClusterRole) / 운영자(Deployment 수정 Role) / SRE(Namespace 전체 권한) RoleBinding × 3 (2) **서비스 RBAC**: Helm 차트 `serviceaccount.yaml`에 서비스별 Role + RoleBinding 추가 (현재는 SA만 분리, ClusterRole 미바인딩) → 최소 권한 원칙 | **평가 심화 (3)-1, (3)-2**. SPEC §3.2 `serviceAccount.create` 확장 |
+| **R-49** | **NetworkPolicy + 통신 차단 검증** | ⏸ | (1) `platform/60-network-policies/` 신설 (2) 서비스별 ingress NetworkPolicy: `api-gateway → backends`, `order ↔ inventory` Kafka producer/consumer만 허용 (3) 의도하지 않은 통신 차단 테스트 (`kubectl exec` 다른 서비스에서 curl 거부 확인) | **평가 심화 (3)-3**. Calico CNI는 NetworkPolicy 지원 ✅ |
 | R-27 (a) | Gradle 중복 빌드 제거 (호스트 + Docker → Docker 단순화) | ✅ | 6 PR 머지 (product/auth/user/order/inventory/api-gateway의 `chore/r-27-*`) | 빌드 시간 ~5분 → **2분 25초** 검증 (product-service). Docker 3-stage → 2-stage, 호스트 bootJar 결과를 layered extract만. 부가: glibc base 불필요 (alpine만) → TROUBLESHOOTING §3.1 (Alpine musl) 자동 회피 |
 | R-27 (e) | `paths-ignore` (docs PR build skip) | ✅ | `msa-product-service chore/r-27-paths-ignore-and-dependabot` 머지 | `**.md`, `docs/**`, `LICENSE`, `.gitignore`, `.gitattributes` skip. 5개 서비스 + common-libs propagate는 Phase 5 후 (영향 작음) |
 | R-27 (g) | Dependabot 활성화 | ❌ 폐기 | `msa-product-service chore/remove-dependabot` 머지 (역삭제) | 첫 주에 7+개 자동 PR 폭주 → review 부담. Spring Boot BOM이 대부분 dep 관리 + Gradle bump가 Kotlin 2.1 toolchain 결정과 충돌. 추후 Renovate 또는 monthly check 같은 가벼운 대안 검토 |
@@ -158,6 +169,13 @@
 | R-15 | GitHub Actions SHA pin + Dependabot | ⏸ | 보안 강화 트랙 | Phase 6 또는 별도 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 모니터링 | ⏸ | Phase 6 종료 시점 또는 EOL 2주 전 검토 | 3.6.x 또는 4.0 마이그레이션 |
 | R-40 | **msa-frontend 정적 호스팅 배포** (S3 + CloudFront + Route 53 + ACM) | ⏸ | terraform 모듈 + CI 빌드 산출물 S3 sync | E8 epic. msa-provisioning에 frontend 호스팅 자원 추가 |
+| R-50 | **(선택 평가요소) Rate Limit 실 구현** | ⏸ | api-gateway `application.yaml`에 SC Gateway `RequestRateLimiter` filter + Redis (분당 token bucket) | **평가 기본 (2)-5 선택**. 백로그/PLAN에는 명시되어 있으나 코드 미반영 |
+| R-51 | **(선택 평가요소) KEDA (Kafka lag 기반 ScaledObject)** | 📌 | inventory consumer가 `order.pending` lag 임계값 도달 시 Pod 자동 확장 | **평가 심화 (1)-4 선택**. 발표 데모 임팩트 큼 |
+| R-52 | **(선택 평가요소) ArgoCD Rollouts Canary** | 📌 | order-service 등 1개 서비스에 Canary 단계별 분기 + 자동 롤백 | **평가 심화 (1)-5 선택**. ArgoCD 이미 설치되어 비용 작음 |
+| R-53 | **(선택 평가요소) OPA Gatekeeper** | 📌 | ConstraintTemplate (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`) → Namespace 전체 강제 + 정책 위반 거부 테스트 | **평가 심화 (2)-5 선택** |
+| R-54 | **(선택 평가요소) OWASP ZAP DAST + SARIF** | 📌 | staging에서 ZAP scan → SARIF GitHub Security 탭 업로드 | **평가 심화 (2)-4 선택** |
+| R-55 | **(선택 평가요소) Falco DaemonSet 런타임 탐지** | 📌 | 비정상 shell 실행 등 이벤트 Slack `#security-report` 연동 | **평가 심화 (3)-5 선택** |
+| R-56 | **(선택 평가요소) Incident Response 5단계 자동화** | 📌 | 탐지 → 격리 → 분석 → 복구 → 회고 runbook + 각 단계 스크립트 | **평가 심화 (3)-4 선택** |
 | P6.1 | 발표 자료 (architecture diagram + decision log + 비용 분석) | ⏸ | KT Cloud Tech UP 2기 발표 | |
 
 ---
@@ -189,6 +207,57 @@
 | 2026-05-12 | §0/§12.0.1 | SB `3.3.0` → `3.5.13`, Spring Cloud 2025.0.2 명시 | CVE-2025-22235 + Q1 |
 | 2026-05-12 | §13.3 step 7 | "SB 3.3.0 검증" → "SB 3.5.13 검증" | upgrade 결과 |
 | 2026-05-12 | §7 CI + §7.1 Secrets 표 | `AWS_DEPLOYMENTS_ENABLED` 게이트 + Variable 행 신설 | R-19 |
+
+---
+
+## 평가요소 매핑 (KT Cloud Tech UP 2기 발표)
+
+본 섹션은 발표 평가요소 → BACKLOG task 역인덱스. **필수 항목은 모두 R-NN 매핑되어야 함** (불일치 시 신규 R 추가).
+
+### 기본 프로젝트
+
+| 평가요소 | 필수/선택 | 대응 R | 상태 |
+|---|---|---|---|
+| (1)-1 이벤트 스토밍 + 독립 배포/확장/격리 | 필수 | P1.x / Phase 4 polyrepo 전체 | ✅ |
+| (1)-2 동기 REST vs 비동기 이벤트 적용 기준 | 필수 | ADR-0003 / ADR-0005 / PROJECT_PLAN §5.2 | ✅ |
+| (1)-3 Database per Service | 필수 | Phase 4 전체 + PROJECT_PLAN §5.3 | ✅ |
+| (1)-4 Kafka StatefulSet + 토픽 + 비동기 | 선택 | R-35 (c) Strimzi + ADR-0004 | ⏸ |
+| (1)-5 Event Sourcing 1개 서비스 | 선택 | R-22 / ADR-0007 (inventory) | ✅ |
+| (2)-1 K8s ClusterIP + DNS 디스커버리 | 필수 | **R-41** | ⏸ |
+| (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.6 | ✅ |
+| (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** | ⏸ |
+| (2)-4 Resilience4j + Fault Injection | 선택 | Epic E7 (PROJECT_PLAN) | ⏸ Phase 5 |
+| (2)-5 Rate Limit | 선택 | **R-50** | 📌 |
+| (3)-1 JUnit 단위 + CI | 필수 | Phase 0-4 CI 전체 | ✅ |
+| (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42** | ⏸ |
+| (3)-3 Prometheus + Grafana | 필수 | **R-42** + R-35 (f) | ⏸ |
+| (3)-4 Testcontainers | 선택 | PROJECT_PLAN §4.1 명시 (실 사용은 코드 점검) | 🔍 |
+| (3)-5 Newman CLI in CI | 선택 | **R-42** | ⏸ |
+| (3)-6 Kafka consumer lag Exporter | 선택 | Epic E12 + R-35 (f) | ⏸ Phase 5 |
+
+### 심화 프로젝트
+
+| 평가요소 | 필수/선택 | 대응 R | 상태 |
+|---|---|---|---|
+| (1)-1 독립 배포 + E2E 무영향 검증 | 필수 | **R-44** | ⏸ |
+| (1)-2 API GW ↔ Service Mesh 협업 | 필수 | **R-44** + R-03 | ⏸ |
+| (1)-3 PodDisruptionBudget | 필수 | **R-43** | ⏸ |
+| (1)-4 KEDA | 선택 | **R-51** | 📌 |
+| (1)-5 ArgoCD Rollouts Canary | 선택 | **R-52** | 📌 |
+| (2)-1 SonarQube 80% 게이트 | 필수 | **R-45** | ⏸ |
+| (2)-2 Trivy config (매니페스트 스캔) | 필수 | **R-46** | ⏸ |
+| (2)-3 Slack #security-report | 필수 | **R-47** | ⏸ |
+| (2)-4 OWASP ZAP DAST | 선택 | **R-54** | 📌 |
+| (2)-5 OPA Gatekeeper | 선택 | **R-53** | 📌 |
+| (3)-1 RBAC 역할 분리 | 필수 | **R-48** | ⏸ |
+| (3)-2 ServiceAccount + Role/RoleBinding | 필수 | **R-48** | ⏸ |
+| (3)-3 NetworkPolicy + 차단 테스트 | 필수 | **R-49** | ⏸ |
+| (3)-4 Incident Response 5단계 | 선택 | **R-56** | 📌 |
+| (3)-5 Falco DaemonSet | 선택 | **R-55** | 📌 |
+
+**필수 항목 (총 18개) 모두 R-NN 매핑 완료 ✅**
+- 기본 필수 9 중 ✅ 6 완료 / ⏸ 3 (R-41/R-42)
+- 심화 필수 9 중 ⏸ 9 (R-43~R-49)
 
 ---
 
