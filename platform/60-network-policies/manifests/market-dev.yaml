@@ -1,0 +1,150 @@
+# market-dev: Default deny + 의도된 통신 경로만 명시적 allow
+# 평가 기준: "의도하지 않은 통신이 차단됨을 테스트로 검증"
+#
+# 검증 절차 (R-49 task):
+#   kubectl exec -n market-dev product-service-xxx -- curl auth-service:9005   → 거부 (DENY)
+#   kubectl exec -n market-dev api-gateway-xxx     -- curl auth-service:9005   → 허용 (ALLOW)
+#   kubectl exec -n market-dev order-service-xxx   -- curl product-service:9001 → 거부
+
+# 1) Default deny — 모든 Pod ingress 차단 (allow rule 없으면 거부)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: market-dev
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# 2) api-gateway: Istio ingressgateway에서만 receive (외부 진입점)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-allow-ingressgateway
+  namespace: market-dev
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 8100
+
+---
+# 3) backend gRPC services: api-gateway에서만 receive
+# auth(9005) / product(9001) / order(9002) / inventory(9003)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-grpc-allow-gateway
+  namespace: market-dev
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - auth-service
+          - product-service
+          - order-service
+          - inventory-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+      ports:
+        - protocol: TCP
+          port: 9001
+        - protocol: TCP
+          port: 9002
+        - protocol: TCP
+          port: 9003
+        - protocol: TCP
+          port: 9005
+
+---
+# 4) user-service REST: api-gateway에서만 (port 8004)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-service-allow-gateway
+  namespace: market-dev
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: user-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8004
+
+---
+# 5) order-service admin REST :8002 — api-gateway SC Gateway 패스스루용
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: order-service-admin-allow-gateway
+  namespace: market-dev
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: order-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8002
+
+---
+# 6) Prometheus scrape: monitoring namespace에서 모든 actuator endpoint 허용
+# Phase 5 kube-prometheus-stack 배포 후 작동. monitoring namespace 라벨 필요.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-scrape-allow
+  namespace: market-dev
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8001
+        - protocol: TCP
+          port: 8002
+        - protocol: TCP
+          port: 8003
+        - protocol: TCP
+          port: 8004
+        - protocol: TCP
+          port: 8005
+        - protocol: TCP
+          port: 8100

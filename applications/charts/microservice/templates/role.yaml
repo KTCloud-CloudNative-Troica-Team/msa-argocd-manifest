@@ -1,0 +1,35 @@
+{{- /*
+R-48 (평가 심화 (3)-2): 서비스별 ServiceAccount + Role + RoleBinding
+- 평가 기준 "ClusterRole 대신 Role + RoleBinding을 사용"하여 namespace 한정 최소 권한.
+- 기본 rules=[] = K8s API 일체 접근 불가 (진정한 최소 권한).
+- Spring Cloud Kubernetes 등 K8s API 호출 필요 시 values에서 rules 추가.
+*/}}
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "microservice.fullname" . }}
+  labels:
+    {{- include "microservice.labels" . | nindent 4 }}
+{{- if .Values.rbac.rules }}
+rules:
+  {{- toYaml .Values.rbac.rules | nindent 2 }}
+{{- else }}
+rules: []
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "microservice.fullname" . }}
+  labels:
+    {{- include "microservice.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "microservice.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "microservice.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

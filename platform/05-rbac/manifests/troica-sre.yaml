@@ -1,0 +1,19 @@
+# SRE: Namespace 전체 권한 (cluster-admin 위임)
+#
+# 발표 단계 단순화: built-in `cluster-admin` ClusterRole에 바인딩.
+# 실 운영 시 별도 ClusterRole 정의 (예: RBAC API 자체 수정은 제외) 권장.
+# K8s RBAC은 deny rule이 없고 allow only이므로 cluster-admin에서 일부 제외 표현은 불가능.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: troica-sre-binding
+  labels:
+    troica.io/role: sre
+subjects:
+  - kind: Group
+    name: troica-sre
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io

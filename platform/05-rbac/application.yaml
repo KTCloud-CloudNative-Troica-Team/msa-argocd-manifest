@@ -1,0 +1,33 @@
+# R-48 (평가 심화 (3)-1): K8s RBAC 역할 분리
+# 개발자(조회 전용) / 운영자(Deployment 수정 + Namespace 한정) / SRE(전 namespace)
+#
+# Sync Wave -8: cert-manager(-10) 다음, istio-base(-5) 전. RBAC은 다른 컴포넌트
+# operator/controller가 ServiceAccount 검증할 때 필요할 수 있어 일찍 sync.
+#
+# Group binding은 OIDC provider 통합 후 활성. 현재는 매니페스트만 적용 (Phase 6 OIDC).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-rbac
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-8"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/05-rbac/manifests
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
