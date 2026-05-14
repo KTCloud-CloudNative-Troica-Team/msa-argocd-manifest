@@ -1,5 +1,5 @@
 image:
-  tag: main-4398cc9 # CI update-prod job이 yq로 교체 후 PR 생성
+  tag: main-50f3060 # CI update-prod job이 yq로 교체 후 PR 생성
 replicaCount: 3
 springProfilesActive: "prod"
 hpa:
