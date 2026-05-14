@@ -1,0 +1,30 @@
+# R-49 (평가 심화 (3)-3): NetworkPolicy — 서비스 간 접근 제어
+#
+# Sync Wave 5: 모든 서비스 + Istio sidecar가 올라온 후 sync (정책 활성화로 통신 영향 방지).
+# Calico CNI가 NetworkPolicy enforce (기 설치).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-network-policies
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/60-network-policies/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: market-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
