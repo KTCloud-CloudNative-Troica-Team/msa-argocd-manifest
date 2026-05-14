@@ -170,7 +170,7 @@
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
-| R-35 | Platform 배포 (a~g) | ⏸ | 기본 (1)-4 (선택) Kafka StatefulSet + (3)-3 / (3)-6 + 심화 다수 | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets. **Phase 5 본 작업, 비용 영향 大** |
+| R-35 | Platform 배포 (a~g) | ⏸ | 기본 (1)-4 (선택) Kafka StatefulSet + (3)-3 (필수) Prometheus/Grafana + (3)-6 (선택) Kafka consumer lag + 심화 (1)-2 (필수) Istio + (2)-3 (필수) AlertManager + (3)-2 (필수) ExternalSecrets | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets. **Phase 5 본 작업, 비용 영향 大** |
 | R-03 | Traefik → Istio 교체 | ⏸ | 심화 (1)-2 (필수) | Istio Gateway + VirtualService. R-35 (d) 와 함께 |
 | R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ⏸ | 심화 (3)-2 (필수) | R-33 / R-35 (g) 와 묶음 |
 | R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | 심화 (3)-2 (필수) | ExternalSecrets Operator + AWS Secrets Manager |
