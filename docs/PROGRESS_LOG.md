@@ -207,3 +207,39 @@ R-01, R-02, R-06, R-07, R-10, R-11, R-14, R-17.
 ---
 
 *Last updated: 2026-05-12, by Troica polyrepo migration session.*
+
+---
+
+## 2026-05-14 스냅샷 — Phase 5 진행 (R-35 매니페스트 + 평가요소 cover)
+
+### 머지 완료 (main)
+- R-43 PDB / R-44 ADR-0009 / R-46 Trivy config / R-48 RBAC / R-49 NetworkPolicy / R-50 Rate Limit / R-41 Fallback / R-45 SonarCloud (sonarcloud.io 셋업 + ADR-0011 wait=false) / R-57 단위 테스트 (7 polyrepo ~48 케이스) / ADR-0010 보안 알림 / ADR-0011 SonarCloud 정책
+
+### Open PR (미머지)
+- `feat/r-35-platform-manifests` — **R-35 매니페스트 22 파일 일괄 작성** (cert-manager → external-secrets-config). cluster up 전 사전 작성. 머지 후 cluster up + ArgoCD sync 로 자동 reconcile.
+
+### 평가요소 cover 현황 (필수 18)
+- ✅ 13 / 🔄 3 (R-44 검증, R-47 AlertManager, R-49 검증) / ⏸ 2 (R-42, R-41 cluster 검증)
+- cluster up + Slack 채널 생성 시 18/18 도달
+
+### 다음 작업 — R-42 (사용자 직접 지시, 2026-05-14)
+- **R-42 Postman Collection + Newman CI + Grafana 대시보드** (cluster up 전 가능)
+- 평가 cover: 기본 (3)-2 (필수) + (3)-3 (필수) + (3)-5 (선택)
+- 작업 원칙: **추측 X, 실 코드 확인 기반**
+  - api-gateway 실 endpoint = `src/main/kotlin/.../adapter/presentation/web/inbound/*RestController.kt` 직접 확인
+  - SecurityConfig 확인
+  - Spring Boot Actuator metric 이름 확인 (Micrometer)
+
+### 사용자 사전 작업 (cluster up 직전 필요)
+- AWS Secrets Manager 9 secrets 등록 (troica/db/* × 6 + troica/auth/jwt-secret + troica/slack/webhooks + troica/grafana/admin). 30일 free trial 활용 권장
+- Slack `#security-report` 채널 생성 + Incoming Webhook 발급
+- msa-provisioning terraform 에 EC2 node IAM role 의 `SecretsManager:GetSecretValue` 권한 추가 (R-25 운영)
+
+### Phase 5 / Phase 6 구분 (BACKLOG 재구성 후)
+- **Phase 5** = 평가 필수 100% cover (cluster up + 검증)
+- **Phase 6** = 심화 선택 (R-51 KEDA / R-52 Rollouts / R-53 OPA / R-54 ZAP / R-55 Falco / R-56 Incident Response / R-58 Testcontainers) + 운영 전환 (R-08 archive / R-15 SHA pin / R-18 SB EOL / R-40 frontend 호스팅) + P6.1 발표 자료
+
+### 보류 — Phase 6 task 옵션
+- 발표 임팩트 ROI: R-52 (Rollouts, ArgoCD 이미 있음) → R-51 (KEDA) → R-53 (OPA) → 나머지
+
+*Last updated: 2026-05-14 PM, R-35 매니페스트 PR 푸시 시점.*
