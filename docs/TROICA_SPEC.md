@@ -10,7 +10,7 @@
 
 | 항목 | 결정 |
 |------|------|
-| 레포지토리 전략 | Polyrepo (**9개**) — 서비스 6 + 라이브러리 1 + manifest + provisioning. `msa-notification-service`는 폐기(archive), `msa-auth-service` 신규 |
+| 레포지토리 전략 | Polyrepo (**10개**) — 서비스 6 + 라이브러리 1 + manifest + provisioning + frontend 1. `msa-notification-service`는 폐기(archive), `msa-auth-service` 신규, `msa-frontend` (팀장님 작성, React 19 + Vite + TS) |
 | 이미지 레지스트리 | **AWS ECR + GitHub OIDC** (long-lived AWS key 미사용) |
 | 매니페스트 레포 구조 | `platform/` + `applications/` + `projects/` (계획서 E2) |
 | 마이크로서비스 패키징 | **공통 Helm 차트 1개 + values per service** (계획서 5.5.3 의도) |
@@ -33,7 +33,7 @@
 
 ---
 
-## 1. 레포지토리 구조 (9개)
+## 1. 레포지토리 구조 (10개)
 
 GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 
@@ -65,9 +65,15 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 | 8 | `msa-argocd-manifest` | Helm 차트 + values + ArgoCD Application/ApplicationSet/Project CRD |
 | 9 | `msa-provisioning` | Terraform (AWS) + Ansible (kubeadm) |
 
+### 1.4 프론트엔드 (1개)
+
+| # | 레포 명 | 내용 |
+|---|---------|------|
+| 10 | `msa-frontend` | **React 19.2 + Vite 8 + TypeScript 6** SPA. 디렉토리 `market-msa-app/`. 라우터: **TanStack Router** (file-based), 서버 상태: **TanStack Query**, UI: **MUI v9 + Tailwind CSS v4 + Emotion**, 클라이언트 상태: **Zustand**, HTTP: **Axios**. 팀장님 작성 — 백엔드와 별도 polyrepo. 정적 호스팅(S3+CloudFront) 배포는 Phase 6 예정 |
+
 > **archive 처리**: 기존 `msa-spring-boot` 모노레포는 마이그레이션 완료 후 read-only로 보존 (delete 금지, 이력 보존용).
 
-### 1.4 포트 할당
+### 1.5 포트 할당
 
 8000번대 = HTTP/REST + Actuator, 9000번대 = gRPC. 클러스터 내부는 K8s Service로 추상화되지만, 로컬 개발 / 디버그 시 일관성 위해 명시.
 

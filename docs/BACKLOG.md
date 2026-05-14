@@ -109,7 +109,7 @@
 
 ---
 
-## Phase 4 — 6개 서비스 polyrepo (완료)
+## Phase 4 — 6개 서비스 polyrepo + 프론트엔드 (완료)
 
 | ID | Task | 상태 | 산출물 | 비고 |
 |---|---|---|---|---|
@@ -120,6 +120,7 @@
 | P4.5 | msa-auth-service 신규 레포 (D1) | ✅ | `phase-4/initial-setup` 머지 | gRPC `AuthService.{SignUp, SignIn, CheckValidity}` |
 | P4.6 | msa-api-gateway 단일 모듈 BFF + Gateway 혼합 (Q1 c) | ✅ | `phase-4/initial-setup` 머지 | Spring Cloud 2025.0.2 Northfields |
 | P4.7 | 6개 매니페스트 values (dev/prod) | ✅ | argocd-manifest 6개 PR 머지 | `applications/values/<service>/` |
+| R-39 | **msa-frontend 신규 레포** (팀장님 작성) | ✅ | `msa-frontend/market-msa-app/` | **React 19.2 + Vite 8 + TypeScript 6 + TanStack Router/Query + MUI v9 + Tailwind v4 + Zustand**. 백엔드와 별도 polyrepo (10번째). S3+CloudFront 정적 호스팅은 Phase 6 |
 | R-04 | api-gateway 명칭 결정 | ✅ | `msa-api-gateway` 신규 레포 | Q1 (c) 혼합 |
 | R-13 | Kafka JSON 유지 (Protobuf 마이그레이션 보류) | ✅ | Q4 (a) JSON wire 유지 | 추후 Protobuf 전환은 R-13 잔존 |
 | R-21 | Q6 order state machine 확장 | ✅ | P4.2와 동일 | |
@@ -156,6 +157,7 @@
 | R-08 | `msa-spring-boot` 모노레포 archive | ⏸ | GitHub UI archive | 모든 서비스 이전 완료 후 |
 | R-15 | GitHub Actions SHA pin + Dependabot | ⏸ | 보안 강화 트랙 | Phase 6 또는 별도 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 모니터링 | ⏸ | Phase 6 종료 시점 또는 EOL 2주 전 검토 | 3.6.x 또는 4.0 마이그레이션 |
+| R-40 | **msa-frontend 정적 호스팅 배포** (S3 + CloudFront + Route 53 + ACM) | ⏸ | terraform 모듈 + CI 빌드 산출물 S3 sync | E8 epic. msa-provisioning에 frontend 호스팅 자원 추가 |
 | P6.1 | 발표 자료 (architecture diagram + decision log + 비용 분석) | ⏸ | KT Cloud Tech UP 2기 발표 | |
 
 ---

@@ -107,7 +107,7 @@
 | **로깅** | **Loki + Promtail** (Phase 5 예정) | 라벨 기반 인덱싱 |
 | **시각화** | **Grafana** (Phase 5 예정) | 메트릭·로그·트레이스 단일 뷰 + Slack/PagerDuty webhook 알림 |
 | **알림** | **AlertManager → Slack (warning/info) + PagerDuty (critical)** | 별도 notification 서비스 폐기 (ADR-0001) |
-| **프론트엔드** | **React 18 + Vite + TypeScript** | 정적 호스팅 (S3 + CloudFront) — Phase 6 |
+| **프론트엔드** | **React 19.2 + Vite 8 + TypeScript 6** + TanStack Router(file-based) + TanStack Query + MUI v9 + Tailwind v4 + Emotion + Zustand + Axios | **별도 polyrepo `msa-frontend`** (팀장님 작성, `market-msa-app/`). 정적 호스팅 (S3 + CloudFront) 배포는 Phase 6 (R-40) |
 | **테스트** | **JUnit 5, Mockito, Testcontainers, Postman + Newman CLI** | Mock-less 통합 테스트 |
 | **CI** | **GitHub Actions** | 빌드·단위 테스트·Trivy 스캔·**ECR push** (OIDC AssumeRole)·매니페스트 image tag bump (dev=direct commit, prod=PR) |
 | **컨테이너 레지스트리** | **AWS ECR × 6** (`msa/<service>`) | GitHub OIDC Provider 기반 (long-lived AWS key 미사용). KMS 암호화, IMMUTABLE tag, 30-image lifecycle |
@@ -120,12 +120,12 @@
 | IDE | IntelliJ IDEA Community |
 | 협업 | Notion, Discord, GitHub Projects |
 | API 설계 | OpenAPI 3.1, Swagger UI, Protobuf (gRPC IDL) |
-| 형상 관리 | GitHub (**Polyrepo 9개** + Trunk-based + PR 리뷰) |
+| 형상 관리 | GitHub (**Polyrepo 10개** + Trunk-based + PR 리뷰) |
 | 인프라 코드 | Terraform, Ansible, Helm |
 | 부하 테스트 | k6 (Phase 6 예정) |
 | 다이어그램 | Mermaid (모두 `docs/images/`에 모음 — [AWS-architecture](./images/AWS-architecture.md), [GitOps-flow](./images/GitOps-flow.md), [MSA-services](./images/MSA-services.md)) |
 
-### 4.3 레포지토리 구조 — Polyrepo 9개
+### 4.3 레포지토리 구조 — Polyrepo 10개
 
 GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 
@@ -140,6 +140,7 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 | 7 | [msa-common-libs](https://github.com/KTCloud-CloudNative-Troica-Team/msa-common-libs) | 공용 라이브러리 (common + events Protobuf) |
 | 8 | [msa-argocd-manifest](https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest) | GitOps 매니페스트 (단일 진실의 원천) |
 | 9 | [msa-provisioning](https://github.com/KTCloud-CloudNative-Troica-Team/msa-provisioning) | Terraform + Ansible |
+| 10 | [msa-frontend](https://github.com/KTCloud-CloudNative-Troica-Team/msa-frontend) | **프론트엔드 SPA** (React 19 + Vite + TS, `market-msa-app/`) — 팀장님 작성 |
 
 > archive: ~~`msa-notification-service`~~ (ADR-0001) · `msa-spring-boot` 모노레포 (Phase 6 archive 예정, R-08)
 
@@ -235,11 +236,20 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 - **EBS**: StatefulSet PVC (worker 노드 × 3에 20GB씩)
 - **암호화**: 모든 EBS/S3/EFS/ECR는 **AWS KMS** Customer Managed Key로 SSE 암호화
 
-### 5.4 정적 웹 호스팅 (Phase 6 예정)
+### 5.4 정적 웹 호스팅
 
-- React 빌드 산출물 → **S3 + CloudFront**
+**현재 상태** — 코드 작성 완료, 정적 호스팅 배포 미연결.
+
+- **레포**: [`msa-frontend`](https://github.com/KTCloud-CloudNative-Troica-Team/msa-frontend) (별도 polyrepo, 팀장님 작성)
+- **앱 디렉토리**: `market-msa-app/`
+- **스택**: React 19.2 + Vite 8 + TypeScript 6 + TanStack Router/Query + MUI v9 + Tailwind v4 + Zustand + Axios
+- **로컬 실행**: `cd market-msa-app && npm install && npm run dev`
+
+**Phase 6 배포 계획** (R-40):
+- React 빌드 산출물 (`npm run build`) → **S3 + CloudFront**
 - **Route 53** 도메인 연결
 - HTTPS는 ACM 인증서 사용
+- `msa-provisioning`에 frontend 호스팅 Terraform 모듈 추가 + frontend CI에 S3 sync 단계 추가
 
 ### 5.5 배포 파이프라인 (환경 부트스트랩 + GitOps 런타임)
 
@@ -476,7 +486,7 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | **E5. 게이트웨이·인증** | 기본 | api-gateway (BFF + SC Gateway 혼합, ADR-0005), JWT 필터, Rate Limit | ✅ Phase 4 |
 | **E6. 이벤트 통합** | 기본 | Outbox(order), Saga(7-state), Event Sourcing(inventory) | ✅ Phase 3-4 |
 | **E7. 회복성** | 기본 | Resilience4j Circuit Breaker, Fallback, Chaos 검증 | ⏸ Phase 5 |
-| **E8. 정적 웹** | 기본 | React + S3 + CloudFront + Route 53 | ⏸ Phase 6 |
+| **E8. 정적 웹** | 기본 | React **(완료, msa-frontend 레포)** + S3 + CloudFront + Route 53 **(미배포, R-40)** | 🔄 코드 완료 / 배포 ⏸ Phase 6 |
 | **E9. 테스트 자동화** | 기본 | JUnit, Testcontainers, Postman + Newman in CI | 🔄 부분 (Phase 5/6) |
 | **E10. Service Mesh** | 심화 | Istio 설치 (Argo CD App-of-Apps로 관리, Sync Wave -5/-4), Envoy Sidecar 주입, mTLS, 트래픽 시프트 | ⏸ Phase 5 (R-03) |
 | **E11. 관측성** | 심화 | OpenTelemetry, Prometheus, Tempo, Loki, Mimir, Grafana 대시보드 | ⏸ Phase 5 |
@@ -596,7 +606,9 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | **notification-service** | 핵심 도메인 중 1개 | **폐기 (archive)** | 학습 범위 축소. 시스템 알림은 Grafana → Slack/PagerDuty (ADR-0001) |
 | **auth 도메인** | user-service 내부 | **`msa-auth-service` 별도 레포 분리** | JWT secret 보안 영역 격리 + gRPC 단일 책임 (ADR-0001) |
 | **api-gateway** | Spring Cloud Gateway 단독 | **BFF (gRPC client) + SC Gateway 혼합** | path별로 BFF 또는 패스스루 선택 (ADR-0005) |
-| **레포 구조** | 명시 안 됨 | **Polyrepo 9개** (서비스 6 + common-libs + manifest + provisioning) | Polyrepo + 공용 라이브러리 패턴 (ADR-0001) |
+| **레포 구조** | 명시 안 됨 | **Polyrepo 10개** (서비스 6 + common-libs + manifest + provisioning + frontend) | Polyrepo + 공용 라이브러리 패턴 (ADR-0001) |
+| **프론트엔드** | "React 18 + Vite + TypeScript" | **React 19.2 + Vite 8 + TS 6 + TanStack Router/Query + MUI v9 + Tailwind v4 + Zustand** — 별도 `msa-frontend` 레포 (팀장님 작성, 10번째 polyrepo) | React 19 정식 + 모던 SPA 스택 (file-based routing + 서버 상태 분리) |
+| **프론트엔드 호스팅** | "S3 + CloudFront — Phase 6" | 코드 ✅ 작성 완료, **호스팅 미배포** — Phase 6에서 S3+CloudFront+Route 53 (R-40) | 단계 분리 |
 | **공용 라이브러리** | 명시 안 됨 | `msa-common-libs` 멀티모듈 (`common` + `events` Protobuf) — GH Packages publish | dual delivery (lib + service) |
 | **Redis 클라이언트** | 명시 안 됨 | **JitPack 외부 의존성** (`com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2`) | 팀장님 publish 사용. `msa-common-libs:client-redis`는 제거 (ADR-0002) |
 | **Kafka 직렬화** | 명시 안 됨 | **JSON wire** 유지 (Protobuf 코드젠 있지만 wire 미사용) | 모노레포 호환 + 학습 부담 회피. wire→Protobuf 마이그레이션은 추후 트랙 (ADR-0003) |
@@ -642,6 +654,8 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 - **R-28** netty 4.2.x BOM CVE-2026-42577 (외부 의존성)
 - **R-33** 6×2 Secret/ConfigMap 실값 (Phase 5)
 - **R-35** Phase 5 platform 본 작업
+- **R-39** msa-frontend 신규 레포 (팀장님 작성, ✅ Phase 4 완료)
+- **R-40** msa-frontend 정적 호스팅 배포 (S3+CloudFront+Route 53, Phase 6)
 
 ---
 
@@ -650,4 +664,5 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | 일자 | 변경 | 비고 |
 | --- | --- | --- |
 | 2026-04-24 | 원본 계획서 작성 | KT Cloud Tech UP 2기 제출본 |
-| 2026-05-13 | **실제 구현 기준 갱신본** | Phase 0-4 완료 + ADR 0001-0008 + 다이어그램 3종 반영 (본 문서) |
+| 2026-05-13 | **실제 구현 기준 갱신본** | Phase 0-4 완료 + ADR 0001-0008 + 다이어그램 3종 반영 |
+| 2026-05-13 | **msa-frontend 반영** | 10번째 polyrepo `msa-frontend` (팀장님 작성, React 19 + Vite 8 + TS 6 + TanStack + MUI + Tailwind + Zustand) 추가. 호스팅 배포는 R-40 Phase 6 |
