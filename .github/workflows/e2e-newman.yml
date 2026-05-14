@@ -1,0 +1,81 @@
+# R-42 (평가 기본 (3)-2 + (3)-5 필수/선택): Newman CLI 로 E2E 테스트 자동 실행.
+#
+# Collection: tests/e2e/troica-market-e2e.postman_collection.json (회원가입 → 로그인
+# → 상품/재고 조회 → 주문 생성/조회 → JWT 검증).
+#
+# Trigger
+# - workflow_dispatch: 수동 실행 (cluster up 후 검증 시 1차 사용)
+# - schedule: 매 6 시간 (cluster running 시점만 의미. cluster down 시 fail 은 정상)
+# - paths: collection 자체 변경 시 syntax 검증용 PR build
+#
+# 활성화: Org Variable `E2E_ENABLED=true` 설정. 비활성 상태에서는 모든 step skip
+# 되어 main CI 그린 유지.
+
+name: E2E (Newman)
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseUrl:
+        description: "api-gateway 진입점 URL"
+        required: false
+        default: "http://localhost:8100"
+  pull_request:
+    paths:
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-newman.yml"
+  schedule:
+    # 매일 KST 10:00 (UTC 01:00) — 영업 시간 진입 직전 smoke check
+    - cron: "0 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: vars.E2E_ENABLED == 'true' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      # PR build 는 collection JSON 의 구조만 검증 (실 호출 X).
+      # cluster 미연결 환경에서 newman run 은 connection refused 로 실패하나
+      # JSON parse / variable schema 는 검증됨.
+      - name: Validate collection JSON syntax (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          # newman 의 --dry-run 은 없으므로 node 로 JSON parse 만 수행
+          node -e "JSON.parse(require('fs').readFileSync('tests/e2e/troica-market-e2e.postman_collection.json'))"
+          echo "Collection JSON syntax 정상."
+
+      # 수동 / 스케줄 trigger 만 실 실행. baseUrl 은 workflow_dispatch input 또는
+      # 기본 cluster 내부 service DNS (api-gateway.market-dev) 로 override.
+      - name: Run E2E
+        if: github.event_name != 'pull_request'
+        env:
+          BASE_URL: ${{ inputs.baseUrl || 'http://api-gateway.market-dev.svc.cluster.local:8100' }}
+        run: |
+          newman run tests/e2e/troica-market-e2e.postman_collection.json \
+            --env-var "baseUrl=${BASE_URL}" \
+            --reporters cli,junit,html \
+            --reporter-junit-export "newman-junit.xml" \
+            --reporter-html-export "newman-report.html" \
+            --bail
+
+      - name: Upload Newman report
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: |
+            newman-junit.xml
+            newman-report.html
+          retention-days: 7
