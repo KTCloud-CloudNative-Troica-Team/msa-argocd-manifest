@@ -39,6 +39,7 @@ BACKLOG R-XX, TROUBLESHOOTING 항목, SPEC §X, 다른 ADR.
 | [ADR-0008](./0008-order-terminal-events.md) | order.confirmed/order.cancelled 토픽 발행 유지 (consumer 없어도) | Accepted |
 | [ADR-0009](./0009-api-gateway-istio-mesh-collaboration.md) | api-gateway (BFF + SC Gateway) ↔ Istio Service Mesh 책임 분담 | Accepted |
 | [ADR-0010](./0010-security-alerting-strategy.md) | 보안 알림 채널 `#security-report` 분리 전략 | Accepted |
+| [ADR-0011](./0011-sonarcloud-quality-gate-policy.md) | SonarCloud Quality Gate 정책 — 무료 plan 제약 + `wait=false` | Accepted |
 
 ## 가이드
 
