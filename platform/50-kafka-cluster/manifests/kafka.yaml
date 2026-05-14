@@ -1,0 +1,75 @@
+# Strimzi Kafka CR — KRaft 모드 (ZooKeeper 미사용, 2026 권장).
+# 3 broker (Multi-AZ 분산) + 내부 metrics + Prometheus ServiceMonitor.
+#
+# PoC 규모 — replicas 3, EBS gp3 20Gi × 3.
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: market-kafka
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        deleteClaim: false
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: market-kafka
+  namespace: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 3.8.0
+    metadataVersion: 3.8-IV0
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+    # Prometheus JMX exporter — broker metrics scrape (kube-prometheus-stack 이 자동 발견)
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
+  # entity-operator 가 KafkaTopic CR / KafkaUser CR reconcile
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+  # kafka-exporter — consumer-group lag metrics (평가 기본 (3)-6)
+  kafkaExporter:
+    topicRegex: "order\\..*"
+    groupRegex: ".*"

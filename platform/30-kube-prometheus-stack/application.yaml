@@ -1,0 +1,158 @@
+# R-35 (e) (f) + R-47: kube-prometheus-stack — Prometheus + AlertManager + Grafana
+# 한 chart 로 통합 배포.
+#
+# 평가 cover:
+#   - 기본 (3)-3 (필수) Prometheus + Grafana
+#   - 기본 (3)-6 (선택) Kafka consumer lag — Strimzi metrics + Grafana 대시보드
+#   - 심화 (2)-3 (필수) Slack #security-report — AlertManager severity 라우팅
+#
+# Sync Wave 0: cert-manager / Istio 다음, operators 들 직전.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 65.5.1
+    helm:
+      releaseName: kube-prometheus-stack
+      # values 가 길어져 별도 ConfigMap 또는 valuesObject 보다는 inline 유지 — Helm
+      # template 시 inline 이 가장 단순.
+      values: |
+        # ===== Prometheus =====
+        prometheus:
+          prometheusSpec:
+            retention: 7d
+            resources:
+              requests:
+                cpu: 200m
+                memory: 1Gi
+              limits:
+                memory: 2Gi
+            # 모든 namespace 의 ServiceMonitor / PodMonitor 자동 발견
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            # 영구 볼륨 — EBS gp3 기본 StorageClass
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 20Gi
+
+        # ===== AlertManager (R-47 보안 알림 라우팅) =====
+        # ADR-0010 채널 분리 전략 구현. severity 라벨에 따라 #alerts 와
+        # #security-report 로 분기. Slack webhook 은 ExternalSecret 으로 주입
+        # (platform/91-external-secrets-config/ 에 정의 — 본 chart 가 reference).
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
+          config:
+            global:
+              resolve_timeout: 5m
+            route:
+              receiver: default-slack
+              group_by: ["alertname", "severity"]
+              group_wait: 30s
+              group_interval: 5m
+              repeat_interval: 4h
+              routes:
+                # ADR-0010: 보안 라벨 별도 채널
+                - matchers:
+                    - severity = "security"
+                  receiver: security-slack
+                  continue: false
+            receivers:
+              - name: default-slack
+                slack_configs:
+                  - api_url_file: /etc/alertmanager/secrets/slack-default-url/url
+                    channel: "#alerts"
+                    send_resolved: true
+                    title: '{{ template "slack.default.title" . }}'
+                    text: '{{ template "slack.default.text" . }}'
+              - name: security-slack
+                slack_configs:
+                  - api_url_file: /etc/alertmanager/secrets/slack-security-url/url
+                    channel: "#security-report"
+                    send_resolved: true
+                    title: ':rotating_light: {{ .CommonLabels.alertname }}'
+                    text: '{{ template "slack.default.text" . }}'
+          # Slack webhook URL Secret 을 mount
+          # (Secret 자체는 ExternalSecret 으로 AWS Secrets Manager 에서 동기화 — R-33)
+          secrets:
+            - alertmanager-slack-webhooks
+
+        # ===== Grafana =====
+        grafana:
+          adminPassword: "" # ExternalSecret 으로 grafana-admin-password Secret 에서 주입
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: admin-password
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          # Loki / Tempo datasource 자동 등록
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              url: http://loki-gateway.observability.svc:80
+              access: proxy
+            - name: Tempo
+              type: tempo
+              url: http://tempo.observability.svc:3200
+              access: proxy
+          # 사전 정의 대시보드 — kube-state-metrics / node-exporter / istio /
+          # kafka (Strimzi metrics 대상). 추가 Troica 도메인 대시보드는
+          # platform/30-kube-prometheus-stack/dashboards/ 에 ConfigMap 으로
+          # 별도 추가 (R-42 작업).
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              searchNamespace: ALL
+
+        # ===== Strimzi Kafka metrics scrape =====
+        # Strimzi Operator 가 생성하는 Kafka broker / consumer-group lag exporter
+        # 의 metrics 를 자동 수집하기 위한 ServiceMonitor 활성화 (위 selectorNilUsesHelmValues)
+
+        # PoC 규모 — 일부 비활성화로 리소스 절감
+        kubeProxy:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeControllerManager:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

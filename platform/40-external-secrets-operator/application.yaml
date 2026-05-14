@@ -1,0 +1,59 @@
+# R-25 / R-33 / R-35 (g): External Secrets Operator — AWS Secrets Manager 에 보관된
+# 실 비밀값을 ExternalSecret CR 를 통해 K8s Secret 으로 동기화.
+#
+# Sync Wave 1: 다른 operator 들과 동시 sync. 실 ClusterSecretStore + ExternalSecret
+# CR 는 platform/91-external-secrets-config/ 에 정의 (Sync Wave 3, operator 후).
+#
+# 평가 cover:
+#   - 심화 (3)-2 (필수) — 서비스별 Secret 분리 + 최소 권한 (운영 시 secret rotation)
+#   - R-25 JWT secret 정식 외부화
+#   - R-33 6×2 Secret + ConfigMap 실값
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: external-secrets
+    repoURL: https://charts.external-secrets.io
+    targetRevision: 0.10.5
+    helm:
+      releaseName: external-secrets
+      values: |
+        installCRDs: true
+        replicaCount: 1
+        webhook:
+          replicaCount: 1
+        certController:
+          replicaCount: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 200Mi
+        # Prometheus ServiceMonitor 자동 생성
+        serviceMonitor:
+          enabled: true
+        # IRSA / instance profile 기반 AWS 인증 (kubelet IAM role 활용)
+        # — 별도 access key 주입 불필요
+        global:
+          serviceAccount:
+            create: true
+            annotations: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

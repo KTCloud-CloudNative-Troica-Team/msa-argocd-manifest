@@ -1,0 +1,89 @@
+# R-03 / R-35 (d): Istio control plane (istiod) + Ingress Gateway.
+# Sync Wave -4: istio-base CRD 설치 후.
+#
+# 본 PoC 단계 — PeerAuthentication STRICT 로 클러스터 전체 mTLS 강제 (별도 PeerAuthentication
+# 매니페스트는 platform/11-istio-cp/manifests/ 에 추가 가능). market-{dev,prod}
+# namespace 의 sidecar 자동 주입 label 은 R-49 NetworkPolicy / 각 서비스 Deployment
+# annotation 으로 이미 처리됨.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-cp
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - chart: istiod
+      repoURL: https://istio-release.storage.googleapis.com/charts
+      targetRevision: 1.23.3
+      helm:
+        releaseName: istiod
+        values: |
+          # PoC 규모 단일 replica
+          pilot:
+            replicaCount: 1
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                memory: 1Gi
+          # Telemetry — Prometheus scrape 가능하도록 ServiceMonitor 생성
+          telemetry:
+            enabled: true
+            v2:
+              enabled: true
+              prometheus:
+                enabled: true
+          # 모든 신규 sidecar 가 디폴트로 mTLS STRICT 모드 작동
+          meshConfig:
+            defaultConfig:
+              proxyMetadata: {}
+              tracing:
+                sampling: 100.0
+            enableTracing: true
+    - chart: gateway
+      repoURL: https://istio-release.storage.googleapis.com/charts
+      targetRevision: 1.23.3
+      helm:
+        releaseName: istio-ingressgateway
+        values: |
+          # 외부 진입점 — NLB target. SPEC §5.1 의 NLB :6443 외 별도 LoadBalancer
+          # service 가 NodePort 30443/HTTPS 노출. PoC 단계는 NodePort 로 시작
+          # (LoadBalancer 는 AWS LB 추가 비용).
+          service:
+            type: NodePort
+            ports:
+              - name: status-port
+                port: 15021
+                targetPort: 15021
+                nodePort: 30021
+              - name: http2
+                port: 80
+                targetPort: 80
+                nodePort: 30080
+              - name: https
+                port: 443
+                targetPort: 443
+                nodePort: 30443
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

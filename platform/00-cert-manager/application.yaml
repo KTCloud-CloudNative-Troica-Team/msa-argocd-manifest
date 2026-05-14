@@ -1,0 +1,47 @@
+# R-35 사전 조건: cert-manager — Istio mTLS 외부 인증서 / SonarCloud 등 TLS 종료
+# 처리에 필요한 X.509 인증서 자동 발급/갱신을 담당함.
+#
+# Sync Wave -10 — 가장 먼저 sync. CRD (Certificate, Issuer 등) 가 후속 컴포넌트
+# (Istio / ExternalSecrets / Loki 등) 의 의존성이 될 수 있어 의도적으로 첫 단계.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: cert-manager
+    repoURL: https://charts.jetstack.io
+    targetRevision: v1.16.2
+    helm:
+      releaseName: cert-manager
+      values: |
+        # CRD 를 chart 가 직접 설치 — 별도 manifest apply 불필요
+        crds:
+          enabled: true
+        # 비용 절감 — 단일 replica (HA 불필요한 PoC 단계)
+        replicaCount: 1
+        webhook:
+          replicaCount: 1
+        cainjector:
+          replicaCount: 1
+        # Prometheus ServiceMonitor 자동 생성 — kube-prometheus-stack 이 scrape
+        prometheus:
+          enabled: true
+          servicemonitor:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

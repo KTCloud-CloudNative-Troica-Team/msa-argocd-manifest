@@ -1,0 +1,35 @@
+# R-03 / R-35 (d): Istio base — CRD + cluster role 만 설치 (control plane 별도, -4).
+# Sync Wave -5: cert-manager 직후, control plane 직전.
+#
+# Istio 를 둘로 분리 (base + istiod) 하는 이유는 CRD 가 control plane 의 자기-참조
+# 의존성을 가지므로 단일 chart 로 한 번에 install 하면 첫 sync 가 race condition
+# 으로 실패할 수 있기 때문임. 권장 패턴 = base 먼저, istiod 다음.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-base
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: base
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    targetRevision: 1.23.3
+    helm:
+      releaseName: istio-base
+      values: |
+        defaultRevision: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

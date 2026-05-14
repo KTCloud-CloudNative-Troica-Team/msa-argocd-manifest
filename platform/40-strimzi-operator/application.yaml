@@ -1,0 +1,45 @@
+# R-35 (c): Strimzi Kafka Operator — Kafka CR + KafkaTopic CR 등 reconcile.
+# 본 operator 가 platform/50-kafka-cluster/ 의 Kafka / KafkaTopic CR 를 watch 함.
+#
+# Sync Wave 1: kafka cluster (50-) 직전.
+#
+# 평가 cover (operator 단독 — cluster instance 는 50- 에서):
+#   - 기본 (1)-4 (선택) Kafka StatefulSet (KRaft 3 broker)
+#   - 기본 (3)-6 (선택) Kafka consumer lag — Strimzi 가 kafka-exporter 자동 배포
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: strimzi-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: strimzi-kafka-operator
+    repoURL: https://strimzi.io/charts/
+    targetRevision: 0.43.0
+    helm:
+      releaseName: strimzi
+      values: |
+        # 모든 namespace 의 Kafka CR / KafkaTopic CR watch
+        watchAnyNamespace: true
+        replicas: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            memory: 400Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: strimzi-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

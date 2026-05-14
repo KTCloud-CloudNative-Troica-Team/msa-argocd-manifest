@@ -1,0 +1,31 @@
+# R-35 (b): Redis Failover CR × 2 — auth refresh-token / inventory stock cache.
+# Sync Wave 2: Redis Operator (Sync Wave 1) 후.
+#
+# PoC 규모 — Sentinel 3 + Redis master 1 + replica 1 per instance.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/50-redis-cluster/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redis
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
