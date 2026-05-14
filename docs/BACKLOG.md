@@ -142,11 +142,11 @@
 | R-03 | Traefik → Istio 교체 | ⏸ | Phase 5 본 작업 | Istio Gateway + VirtualService. **평가 심화 (1)-2 일부** |
 | R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | ExternalSecrets Operator + AWS Secrets Manager (R-25 정식 해결과 묶음) | |
 | R-35 | Platform 배포 (a~g) | ⏸ | (a) PostgreSQL × 6 (b) Redis × 2 (c) Strimzi Kafka + KafkaTopic × 4 (d) Istio (e) AlertManager + Slack (f) Prometheus/Grafana/Loki (g) ExternalSecrets | Phase 5 본 작업, 비용 영향 大. **평가 기본 (1)-4 (Kafka StatefulSet)** |
-| **R-41** | **K8s 디스커버리 검증 + 장애 격리 시나리오 코드** | ⏸ | (1) ClusterIP+DNS 서비스 간 통신 검증 task (`kubectl exec` + nslookup + curl) (2) Response Aggregate Fallback 코드 — order-service가 inventory 다운 시 부분 응답 반환 + 단위 테스트 | **평가 기본 (2)-1, (2)-3**. PROJECT_PLAN §6.8 문서를 코드로 구현 |
+| **R-41** | **K8s 디스커버리 검증 + 장애 격리 시나리오 코드** | 🔄 | (1) ClusterIP+DNS 서비스 간 통신 검증 task — Phase 5 cluster up 후 ⏸ (2) Response Aggregate Fallback 코드 ✅ — **api-gateway BFF에 적용** (msa-api-gateway PR #8 머지). order-service가 아닌 api-gateway에 적용한 이유: ADR-0009 책임 분담 (응용 fallback = api-gateway). InventoryQueryService에 Resilience4j Circuit Breaker + runCatching fallback (quantity=-1 + skuCode="UNAVAILABLE" / emptyList) | **평가 기본 (2)-3 ✅ / (2)-1 ⏸**. 로컬 `gradlew build` BUILD SUCCESSFUL 검증 완료 |
 | **R-42** | **테스트 자동화 + Observability** | ⏸ | (1) Postman Collection (회원가입→주문생성→재고예약→확정 E2E) (2) Newman CI 단계 추가 (각 polyrepo `.github/workflows/ci.yml` 또는 별도 e2e workflow) (3) Prometheus + Grafana 대시보드 (서비스별 에러율 + P99 latency) | **평가 기본 (3)-2, (3)-3** + 선택 (3)-5. R-35 (f) 와 연계 |
 | **R-43** | **PodDisruptionBudget templates** | ✅ | `applications/charts/microservice/templates/pdb.yaml` 신설 + `values.yaml`에 `pdb.{enabled,minAvailable}` 기본값. api: minAvailable=1 (replicaCount=2 기준). worker: maxUnavailable=1 (replicaCount=1 drain 가능). prod values에서 minAvailable=2 override 권장 | **평가 심화 (1)-3**. drain 시뮬레이션 검증은 cluster up 후 R-42와 함께 |
 | **R-44** | **독립 배포 E2E + API GW ↔ Service Mesh 협업 검토** | 🔄 | (1) 한 서비스만 image bump → 다른 서비스 트래픽 무영향 E2E 검증 (Newman) — Phase 5 R-42와 함께 ⏸ (2) api-gateway (BFF + SC Gateway) + Istio (mTLS + VirtualService) 책임 분담 ADR ✅ [ADR-0009](./adr/0009-api-gateway-istio-mesh-collaboration.md) | **평가 심화 (1)-1 ⏸ / (1)-2 ✅**. ADR-0009 작성 완료 |
-| **R-45** | **SonarCloud (public 무료) CI 통합 + 커버리지 게이트** | ⏸ | (1) 6 polyrepo CI에 SonarCloud scan step 추가 — **public repo는 무료 plan 사용 (비용 $0)** (2) 커버리지 80% 미만 또는 Critical 이슈 발견 시 fail (3) `sonarqube-action` PR 코멘트 자동 게시 | **평가 심화 (2)-1**. Gradle JaCoCo 플러그인 연계. 모든 polyrepo가 org public 레포 → SonarCloud public plan 적합 |
+| **R-45** | **SonarCloud (public 무료) CI 통합 + 커버리지 게이트** | 🔄 | (1) **6 polyrepo CI에 SonarCloud scan step + JaCoCo 추가 ✅** — product/order/inventory/user/auth/api-gateway/common-libs 모두 동일 패턴 (multi-module은 subprojects + jacoco / single-module은 root 직접). 비용 $0 (2) 활성화 절차: sonarcloud.io에서 GitHub Org 연결 + 각 프로젝트 import + SONAR_TOKEN Org Secret + SONARCLOUD_ENABLED=true Org Variable — 수동 ⏸ (3) 첫 스캔 후 baseline coverage 측정 → Quality Gate 정책 (80% gate 활성/완화 결정) ⏸ | **평가 심화 (2)-1**. 코드 ✅ (`gradlew sonar --dry-run` 검증) / sonarcloud.io 셋업 ⏸ |
 | **R-46** | **Trivy config (Kubernetes 매니페스트 스캔)** | ✅ | 본 레포 `.github/workflows/trivy-manifest-scan.yml` 신설 — `applications/`, `platform/`, `bootstrap/`, `projects/` 스캔, SARIF GitHub Security 탭 업로드, 실패 시 Slack `#security-report` webhook 발송 | **평가 심화 (2)-2**. PR 트리거 + main push 트리거 |
 | **R-47** | **Slack `#security-report` 보안 알림 채널** | 🔄 | (1) ADR-0010 작성 ✅ — 채널 분리 결정 + AlertManager 라우팅 예시 (2) Trivy manifest scan CI에 Slack webhook step ✅ (R-46 워크플로 내) (3) AlertManager 실 매니페스트는 R-35 (e)와 함께 ⏸ (4) Slack 채널 생성 + webhook 발급은 Phase 5 진입 시 수동 | **평가 심화 (2)-3**. CI 절반 + ADR ✅, AlertManager 절반 ⏸ |
 | **R-48** | **K8s RBAC (사람 + 서비스 양쪽) 역할 분리** | ✅ | (1) **사람 RBAC**: `platform/05-rbac/` 신설 — developer(조회 ClusterRole) / operator(market-{dev,prod} Role) / sre(cluster-admin 바인딩) Group binding. Sync Wave -8 (2) **서비스 RBAC**: Helm 차트 `templates/role.yaml` 신설 — 서비스별 Role + RoleBinding, 기본 `rules: []` (최소 권한). OIDC provider 통합은 Phase 6 | **평가 심화 (3)-1, (3)-2**. Group binding subjects는 OIDC 통합 후 active |
@@ -169,7 +169,7 @@
 | R-15 | GitHub Actions SHA pin + Dependabot | ⏸ | 보안 강화 트랙 | Phase 6 또는 별도 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 모니터링 | ⏸ | Phase 6 종료 시점 또는 EOL 2주 전 검토 | 3.6.x 또는 4.0 마이그레이션 |
 | R-40 | **msa-frontend 정적 호스팅 배포** (S3 + CloudFront + Route 53 + ACM) | ⏸ | terraform 모듈 + CI 빌드 산출물 S3 sync | E8 epic. msa-provisioning에 frontend 호스팅 자원 추가 |
-| R-50 | **(선택 평가요소) Rate Limit 실 구현** | ⏸ | api-gateway `application.yaml`에 SC Gateway `RequestRateLimiter` filter + Redis (분당 token bucket) | **평가 기본 (2)-5 선택**. 백로그/PLAN에는 명시되어 있으나 코드 미반영 |
+| R-50 | **(선택 평가요소) Rate Limit 실 구현** | ✅ | api-gateway `application.yaml`에 SC Gateway `RequestRateLimiter` filter + Redis Reactive (Token Bucket) ✅ — msa-api-gateway PR #7 머지. RateLimitKeyResolverConfig.kt — Authorization Bearer / IP fallback. default-filters로 전체 SC Gateway routes 적용 + order-admin route는 burstCapacity 3으로 더 보수적. 실 작동은 Phase 5 Redis 배포 후 검증 | **평가 기본 (2)-5 선택**. 로컬 `gradlew build` BUILD SUCCESSFUL |
 | R-51 | **(선택 평가요소) KEDA (Kafka lag 기반 ScaledObject)** | 📌 | inventory consumer가 `order.pending` lag 임계값 도달 시 Pod 자동 확장 | **평가 심화 (1)-4 선택**. 발표 데모 임팩트 큼 |
 | R-52 | **(선택 평가요소) ArgoCD Rollouts Canary** | 📌 | order-service 등 1개 서비스에 Canary 단계별 분기 + 자동 롤백 | **평가 심화 (1)-5 선택**. ArgoCD 이미 설치되어 비용 작음 |
 | R-53 | **(선택 평가요소) OPA Gatekeeper** | 📌 | ConstraintTemplate (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`) → Namespace 전체 강제 + 정책 위반 거부 테스트 | **평가 심화 (2)-5 선택** |
@@ -225,9 +225,9 @@
 | (1)-5 Event Sourcing 1개 서비스 | 선택 | R-22 / ADR-0007 (inventory) | ✅ |
 | (2)-1 K8s ClusterIP + DNS 디스커버리 | 필수 | **R-41** | ⏸ |
 | (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.6 | ✅ |
-| (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** | ⏸ |
-| (2)-4 Resilience4j + Fault Injection | 선택 | Epic E7 (PROJECT_PLAN) | ⏸ Phase 5 |
-| (2)-5 Rate Limit | 선택 | **R-50** | 📌 |
+| (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (api-gateway PR #8) | ✅ |
+| (2)-4 Resilience4j + Fault Injection | 선택 | **R-41** Circuit Breaker ✅ / Fault Injection은 Phase 5 | 🔄 |
+| (2)-5 Rate Limit | 선택 | **R-50** (api-gateway PR #7) | ✅ |
 | (3)-1 JUnit 단위 + CI | 필수 | Phase 0-4 CI 전체 | ✅ |
 | (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42** | ⏸ |
 | (3)-3 Prometheus + Grafana | 필수 | **R-42** + R-35 (f) | ⏸ |
@@ -256,8 +256,13 @@
 | (3)-5 Falco DaemonSet | 선택 | **R-55** | 📌 |
 
 **필수 항목 (총 18개) 모두 R-NN 매핑 완료 ✅**
-- 기본 필수 9 중 ✅ 6 완료 / ⏸ 3 (R-41/R-42)
-- 심화 필수 9 중 ✅ 5 (R-43/R-46 + R-48 사람·서비스 + R-44 ADR) / 🔄 3 (R-44 검증, R-47 AlertManager, R-49 검증) / ⏸ 1 (R-45)
+- 기본 필수 9 중 ✅ 7 (R-41 추가) / ⏸ 2 (R-42, R-41 디스커버리 검증 부분)
+- 심화 필수 9 중 ✅ 5 (R-43/R-46 + R-48 사람·서비스 + R-44 ADR) / 🔄 4 (R-44 검증, R-45 sonarcloud.io 셋업, R-47 AlertManager, R-49 검증) / ⏸ 0
+
+**현재 상황 (2026-05-14 갱신)**
+- 매니페스트/코드 작업 완료: R-41/R-43/R-44 ADR/R-45 코드/R-46/R-48/R-49/R-50
+- 외부 수동 셋업 대기: R-45 sonarcloud.io (6 polyrepo PR 머지 후 1회), R-47 Slack 채널 생성
+- Phase 5 cluster up 후 검증 대기: R-41 디스커버리, R-42, R-44 E2E, R-47 AlertManager, R-48 RBAC kubectl, R-49 NetworkPolicy 차단, R-50 RequestRateLimiter 실 작동
 
 ---
 
