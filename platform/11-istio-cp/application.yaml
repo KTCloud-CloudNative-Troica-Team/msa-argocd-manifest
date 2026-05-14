@@ -51,32 +51,42 @@ spec:
       targetRevision: 1.23.3
       helm:
         releaseName: istio-ingressgateway
+        # Istio gateway chart 1.23 의 values.schema.json 은 top-level 에
+        # `defaults:` wrapper 만 허용 (additionalProperties: false). chart 의
+        # values.yaml comment 가 "--set replicaCount=X 로 직접 가능" 이라고
+        # 안내하지만, 그 자동 flatten 은 helm CLI flag 일 때만 작동 — ArgoCD
+        # 처럼 values yaml 통째로 전달 시 schema validation 그대로 적용됨.
+        # 따라서 모든 values 를 `defaults:` 안으로 nesting.
         values: |
-          # 외부 진입점 — NLB target. SPEC §5.1 의 NLB :6443 외 별도 LoadBalancer
-          # service 가 NodePort 30443/HTTPS 노출. PoC 단계는 NodePort 로 시작
-          # (LoadBalancer 는 AWS LB 추가 비용).
-          service:
-            type: NodePort
-            ports:
-              - name: status-port
-                port: 15021
-                targetPort: 15021
-                nodePort: 30021
-              - name: http2
-                port: 80
-                targetPort: 80
-                nodePort: 30080
-              - name: https
-                port: 443
-                targetPort: 443
-                nodePort: 30443
-          replicaCount: 1
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              memory: 256Mi
+          defaults:
+            # 외부 진입점 — NLB target. SPEC §5.1 의 NLB :6443 외 별도 LoadBalancer
+            # service 가 NodePort 30443/HTTPS 노출. PoC 단계는 NodePort 로 시작
+            # (LoadBalancer 는 AWS LB 추가 비용).
+            service:
+              type: NodePort
+              ports:
+                - name: status-port
+                  port: 15021
+                  targetPort: 15021
+                  nodePort: 30021
+                - name: http2
+                  port: 80
+                  targetPort: 80
+                  nodePort: 30080
+                - name: https
+                  port: 443
+                  targetPort: 443
+                  nodePort: 30443
+            replicaCount: 1
+            # 본 chart 의 autoscaling default = enabled. PoC 규모라 disable.
+            autoscaling:
+              enabled: false
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
