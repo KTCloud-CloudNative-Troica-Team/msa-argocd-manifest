@@ -5,6 +5,8 @@ image:
 
 service:
   port: 8003          # SPEC §1.4
+  grpcPort: 9003      # api-gateway BFF 의 gRPC client 가 inventory-service 호출
+                      # (R-41 InventoryQueryService Resilience4j CB Fallback 대상)
 
 envFrom:
   - secretRef:

@@ -11,6 +11,16 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
+    {{- if .Values.service.grpcPort }}
+    # R-25 cluster 검증 사전: api-gateway → backend service (auth/product/order/
+    # inventory) gRPC 호출이 K8s Service 통해 routing 되도록 grpc port 노출.
+    # values 에 service.grpcPort 명시한 service 만 추가됨. user-service 와
+    # api-gateway 는 grpc server X 라 명시 안 함.
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "microservice.selectorLabels" . | nindent 4 }}
     role: api

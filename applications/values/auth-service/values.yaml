@@ -5,6 +5,8 @@ image:
 
 service:
   port: 8005          # SPEC §1.4 (notification 폐기 → auth로 재할당)
+  grpcPort: 9005      # R-25: api-gateway 의 JwtHeaderCheckFilter 가 gRPC client 로
+                      # auth-service.checkValidity() 호출. K8s Service 가 9005 forward.
 
 envFrom:
   - secretRef:
