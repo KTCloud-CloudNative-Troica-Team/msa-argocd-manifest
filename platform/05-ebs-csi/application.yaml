@@ -1,0 +1,85 @@
+# Phase 5 — AWS EBS CSI driver + gp3 StorageClass.
+#
+# self-managed kubeadm cluster 라 EKS 처럼 자동 설치되지 않음. 매니페스트로 명시
+# 설치 필요. PVC 요청 시 EBS volume 동적 프로비저닝.
+#
+# 평가 cover:
+#   - 기본 (1)-3 (필수) Database per Service — CNPG Cluster bootstrap 의 PVC
+#   - 기본 (3)-3 (필수) Prometheus + Grafana 의 영구 저장소
+#   - 심화 (1)-4 (선택) Kafka StatefulSet — Strimzi KafkaNodePool 의 PVC
+#
+# Sync Wave -9: cert-manager (-10) 직후. 다른 stateful workload (Wave 1+ operators,
+# Wave 2 clusters) 가 sync 되기 전에 StorageClass 준비됨.
+#
+# 인증 방식: EBS CSI controller pod 의 AWS SDK 가 default credential provider chain
+# 으로 IMDS → EC2 node IAM role 사용 (ESO 와 동일 패턴). msa-provisioning iam.tf
+# 가 AmazonEBSCSIDriverPolicy 를 node IAM 에 부착.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-ebs-csi-driver
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-9"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: aws-ebs-csi-driver
+    repoURL: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+    # 안정 버전 — 2026-02 release. kubernetes 1.30 호환 (kubeadm cluster 와 match).
+    targetRevision: 2.35.1
+    helm:
+      releaseName: aws-ebs-csi-driver
+      values: |
+        # controller = volume provisioner (CreateVolume / AttachVolume 호출).
+        # PoC 규모 라 replica 2 (HA + leader election).
+        controller:
+          replicaCount: 2
+          resources:
+            requests:
+              cpu: 10m
+              memory: 40Mi
+            limits:
+              memory: 256Mi
+          # tolerations 으로 master 노드 (NoSchedule) 에 schedule 가능하도록.
+          # 그러나 우선순위는 worker. master 는 fallback.
+          tolerations:
+            - operator: Exists
+
+        # node = DaemonSet, 각 노드의 /dev/xvd* attach + mount.
+        node:
+          tolerations:
+            - operator: Exists
+          resources:
+            requests:
+              cpu: 10m
+              memory: 40Mi
+            limits:
+              memory: 256Mi
+
+        # default gp3 StorageClass 생성. CNPG / kube-prometheus-stack / Loki / Tempo
+        # 의 PVC 가 storageClassName 미명시 시 본 gp3 로 binding.
+        storageClasses:
+          - name: gp3
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+            volumeBindingMode: WaitForFirstConsumer
+            reclaimPolicy: Delete
+            allowVolumeExpansion: true
+            parameters:
+              type: gp3
+              # encrypted 는 EBS 기본 (KMS managed). 추가 KMS key 명시 X (PoC).
+              encrypted: "true"
+              # gp3 의 IOPS / throughput 기본값 (3000 / 125 MiB/s). 운영 단계
+              # 부하 측정 후 조정.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
