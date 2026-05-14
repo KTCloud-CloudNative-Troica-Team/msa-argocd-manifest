@@ -452,6 +452,77 @@ sonar {
 
 ---
 
+### 4.6 Trivy manifest scan workflow 누적 fix 3건 (R-46)
+
+`msa-argocd-manifest` 의 `.github/workflows/trivy-manifest-scan.yml` 가 main 머지 후
+3 번 연속 fail. 각 회 다른 원인 — 사후 정리.
+
+#### 4.6.1 `if:` 표현식 내 `secrets.*` 직접 참조 불가 (PR #80)
+
+**증상**:
+```
+##[error]Unrecognized named-value: 'secrets'.
+Located at position 17 within expression: failure() && secrets.SLACK_SECURITY_WEBHOOK_URL != ''
+```
+
+**원인**: GitHub Actions 보안 정책 — `if:` 표현식 안에서 `secrets.*` 직접 참조 금지.
+secret 존재 여부를 step `env:` 또는 별도 boolean job output 으로 노출 후에야 가능.
+
+**해결**: `if: failure() && secrets.X != ''` → `if: failure()` + `continue-on-error: true`.
+webhook 미설정 상태에서는 slack-github-action 이 빈 webhook 으로 fail 하나
+`continue-on-error` 가 흡수하여 workflow 전체에는 영향 X.
+
+#### 4.6.2 action 태그 v prefix 누락 — `Unable to resolve action 0.36.0` (PR #82 → #83 흡수)
+
+**증상** (PR #83 첫 CI 시도):
+```
+##[error]Unable to resolve action `aquasecurity/trivy-action@0.36.0`,
+unable to find version `0.36.0`
+```
+
+**원인**: aquasecurity/trivy-action 의 release tag 는 v prefix (`v0.36.0`).
+2026-03-19 trivy-action 공급망 사고 이후 v prefix 컨벤션 (R-14 / [TROUBLESHOOTING §2.1](#21-trivy-action-0240-미존재--공급망-공격)).
+다른 polyrepo (msa-product-service 등) 의 ci.yml 은 `@v0.36.0` 으로 정확히 작성되어
+있었으나 R-46 작업 시 일관성 누락.
+
+**해결**: `@0.36.0` → `@v0.36.0`. PR #82 가 본 fix 만 담고 있었으나 §4.6.3 도 동시에
+필요해서 PR #83 에 흡수 후 #82 close (superseded).
+
+#### 4.6.3 `exit-code: "1"` 가 PoC 단계 매니페스트 46건과 충돌 (PR #83)
+
+**증상** (action 정상 resolve 후):
+```
+2026-05-14T08:39:41Z  INFO  Detected config files num=46
+Error: Process completed with exit code 1.
+```
+
+**원인**: K8s 표준 룰셋이 SecurityContext / runAsNonRoot / readOnlyRootFilesystem /
+resources / probes 누락 등을 HIGH/CRITICAL 로 검출. PoC 단계 매니페스트는 의도적으로
+이들을 미보강 상태 — `exit-code: "1"` 게이트가 매니페스트 보강 작업과 무관한 PR 까지
+전부 차단.
+
+**해결**: PoC 단계 정보 수집 모드로 전환.
+```yaml
+# Before
+exit-code: "1"
+# After
+exit-code: "0"   # SARIF 는 그대로 GitHub Security 탭에 업로드됨
+```
+
+SARIF 출력 + `upload-sarif` step 은 그대로 유지 → 위반 목록은 GitHub Security 탭에서
+확인 가능. step 자체는 성공 처리 → CI 통과.
+
+**운영 전환 시점**: SecurityContext / resources 등 매니페스트 보강을 마친 후 별도 PR
+로 `exit-code: "0"` → `"1"` 승격. Phase 6 (B) 운영 전환 항목.
+
+**재발 방지**:
+- 신규 보안 스캔 workflow 도입 시 PoC 단계는 정보 수집 모드, 운영 전환 시 게이트 모드
+  의 2 단 운영 결정.
+- action 태그 작성 시 다른 polyrepo 의 동일 action 사용처 grep 후 prefix 일치 확인.
+- `if:` 표현식 안 secrets 참조 시도 자체를 피하고 `continue-on-error` 패턴 사용.
+
+---
+
 ## 5. Terraform / AWS 인프라
 
 ### 5.1 cloud-provider-aws release에 binary asset 없음
