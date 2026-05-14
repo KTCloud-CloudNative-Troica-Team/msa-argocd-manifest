@@ -26,6 +26,13 @@ spec:
       labels:
         env: '{{.env}}'
         service: '{{.path.basename}}'
+      annotations:
+        # platform stateful workload (kafka / postgres / redis = Wave 2) + external
+        # secrets config (Wave 3) + network policies (Wave 5) 모두 sync 후 service
+        # Application 시작하도록 Wave 10. service pod 의 DB / Kafka / Redis 의존성
+        # 충족 후 startup 가능. service Helm chart 자체에 wave 명시 없으면 그 Application
+        # 의 wave 가 default 0 라 stateful 보다 빨라짐 → CrashLoopBackOff.
+        argocd.argoproj.io/sync-wave: "10"
     spec:
       project: market
       source:

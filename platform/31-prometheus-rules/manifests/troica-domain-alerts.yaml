@@ -1,0 +1,90 @@
+# PrometheusRule — R-47 (B) AlertManager 라우팅 demo 의 alert source.
+#
+# kube-prometheus-stack chart 가 default 로 다수 PromRule 설치 (kube-apiserver / kubelet
+# / node-exporter / etc) 하나, severity label 의 routing 분기 demo 를 위한 우리 도메
+# 인 alert 가 없음. 따라서 본 매니페스트가 troica 도메인 alert × 4 추가:
+#   - Kafka consumer lag (severity=security — #security-report 라우팅 demo)
+#   - HTTP 5xx 에러율 (severity=critical — #alerts 기본 라우팅)
+#   - JVM heap usage (severity=warning — #alerts)
+#   - Resilience4j CircuitBreaker OPEN (severity=security — #security-report)
+#
+# AlertManager 매니페스트 (kube-prometheus-stack/application.yaml) 의 route 분기:
+#   severity = "security" → security-slack receiver → #security-report
+#   기본 → default-slack receiver → #alerts
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: troica-domain-alerts
+  namespace: monitoring
+  labels:
+    # kube-prometheus-stack 의 ruleSelector 가 이 label 가진 PrometheusRule 만 수집.
+    # 매니페스트 application.yaml 의 ruleSelectorNilUsesHelmValues: false 설정으로
+    # 모든 namespace 의 PromRule 자동 발견되므로 label 없어도 되나, 명시.
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: troica.kafka
+      interval: 30s
+      rules:
+        # 평가 기본 (3)-6 (선택) Kafka consumer lag — kafka-exporter (Strimzi spec.
+        # kafkaExporter) 가 노출하는 메트릭. 매니페스트 kafka.yaml 의 kafkaExporter
+        # topicRegex: "order\\..*" 라 ADR-0004 dot notation 토픽 lag 만 수집.
+        - alert: KafkaConsumerLagHigh
+          expr: kafka_consumergroup_lag > 100
+          for: 1m
+          labels:
+            # 보안 라우팅 분기 demo — Kafka lag 자체는 보안 무관하지만 R-47 (B)
+            # demo 시점에 manual fire 가능한 alert 1 개 필요. 발표 후 severity 재분류.
+            severity: security
+          annotations:
+            summary: "Kafka consumer lag > 100 (group {{ $labels.consumergroup }}, topic {{ $labels.topic }})"
+            description: "Consumer group {{ $labels.consumergroup }} of topic {{ $labels.topic }} has lag {{ $value }}. May indicate slow consumer or broker pressure."
+
+    - name: troica.http
+      interval: 30s
+      rules:
+        # 기본 (3)-3 (필수) Prometheus + Grafana — HTTP 5xx 에러율. Micrometer 의
+        # http_server_requests_seconds_count metric 사용.
+        - alert: HighHttpErrorRate
+          expr: |
+            sum by (service, namespace) (rate(http_server_requests_seconds_count{status=~"5..", namespace=~"market-.*"}[5m]))
+              / sum by (service, namespace) (rate(http_server_requests_seconds_count{namespace=~"market-.*"}[5m]))
+              > 0.05
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.service }} ({{ $labels.namespace }}) 5xx > 5%"
+            description: "Service {{ $labels.service }} in namespace {{ $labels.namespace }} has 5xx error rate of {{ $value | humanizePercentage }} for last 5 minutes."
+
+    - name: troica.jvm
+      interval: 30s
+      rules:
+        # JVM heap 80% 이상 — 메모리 누수 또는 부하 신호. severity=warning.
+        - alert: JvmHeapPressure
+          expr: |
+            sum by (pod, namespace) (jvm_memory_used_bytes{area="heap", namespace=~"market-.*"})
+              / sum by (pod, namespace) (jvm_memory_max_bytes{area="heap", namespace=~"market-.*"})
+              > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "JVM heap > 80% on pod {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} ({{ $labels.namespace }}) is using {{ $value | humanizePercentage }} of max heap."
+
+    - name: troica.resilience4j
+      interval: 30s
+      rules:
+        # 평가 기본 (2)-3 (필수) 장애 격리 — Resilience4j CircuitBreaker 가 OPEN 상태
+        # 로 들어간 것은 백엔드 의존성 장애 신호. Resilience4j actuator 노출 메트릭
+        # 사용 (api-gateway 의 InventoryQueryService).
+        - alert: CircuitBreakerOpened
+          expr: resilience4j_circuitbreaker_state{state="open"} > 0
+          for: 30s
+          labels:
+            severity: security
+          annotations:
+            summary: "CircuitBreaker {{ $labels.name }} is OPEN"
+            description: "CircuitBreaker {{ $labels.name }} in pod {{ $labels.pod }} ({{ $labels.namespace }}) entered OPEN state — backend dependency failing."

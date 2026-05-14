@@ -1,0 +1,38 @@
+# Troica 도메인 alert 매니페스트 (PrometheusRule CR).
+#
+# kube-prometheus-stack (Wave 0) 가 monitoring ns + Prometheus operator + CRD
+# (PrometheusRule) 설치 후 본 application 이 PromRule 자원 sync.
+#
+# R-47 (B) AlertManager 라우팅 demo 의 alert source:
+#   - severity=security → #security-report (Kafka lag, CircuitBreaker OPEN)
+#   - severity=critical → #alerts (HTTP 5xx)
+#   - severity=warning  → #alerts (JVM heap)
+#
+# Sync Wave 1 — Prometheus operator (kube-prometheus-stack) 직후, operator 들 (CNPG,
+# Strimzi 등) 과 동시. PromRule CRD 가 Wave 0 에 설치되므로 안전.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: troica-prometheus-rules
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/31-prometheus-rules/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
