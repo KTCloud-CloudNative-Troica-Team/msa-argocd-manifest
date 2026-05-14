@@ -1,0 +1,55 @@
+# DestinationRule — api-gateway service 로 향하는 트래픽의 인프라 정책.
+#
+# ADR-0009: Istio = 인프라 레벨 (connection pool / outlier ejection / mTLS),
+# Resilience4j = 응용 도메인 fallback (Response Aggregate). 두 layer 가 직교.
+#
+# outlierDetection = 자동 circuit breaker (인프라 측). consecutive5xxErrors 가 5 회
+# 누적된 endpoint 를 baseEjectionTime 동안 부하 분산 풀에서 제외.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: market-dev
+spec:
+  host: api-gateway.market-dev.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 50
+    tls:
+      mode: ISTIO_MUTUAL    # PeerAuthentication STRICT 와 짝
+---
+# market-prod 동일 정책 (separate Cluster CR ↔ separate DestinationRule).
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: market-prod
+spec:
+  host: api-gateway.market-prod.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 50
+    tls:
+      mode: ISTIO_MUTUAL

@@ -1,0 +1,38 @@
+# R-03 / 평가 심화 (1)-2 (필수): Istio Gateway + VirtualService — 외부 진입 라우팅.
+#
+# Sync Wave -3: istio-cp (-4) 가 control plane 등록 후, application (default) 배포 전.
+# Gateway / VirtualService / PeerAuthentication / DestinationRule CRD 는 istio-base
+# (-5) 가 등록함.
+#
+# ADR-0009 책임 분담:
+# - 외부 진입 (north-south) = Istio ingressgateway → api-gateway 단일 service 로 라우팅
+# - 내부 통신 (east-west) = sidecar mTLS (PeerAuthentication STRICT)
+# - 응용 라우팅 (path 별 백엔드 호출) = api-gateway 의 BFF + SC Gateway 가 처리
+#
+# 따라서 본 Gateway / VS 는 path 분기 없이 api-gateway service 로 단일 라우팅만 함.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/KTCloud-CloudNative-Troica-Team/msa-argocd-manifest.git
+    targetRevision: main
+    path: platform/12-istio-gateway/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

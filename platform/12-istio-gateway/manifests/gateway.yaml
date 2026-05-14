@@ -1,0 +1,37 @@
+# Istio Gateway CR — istio-ingressgateway pod 가 listen 할 외부 진입 정의.
+#
+# istio-cp (11-istio-cp/application.yaml) 의 gateway chart 가 NodePort 30080 (HTTP) +
+# 30443 (HTTPS) 로 외부 노출. NLB 또는 별도 LoadBalancer 가 그 NodePort 로 forward
+# (Phase 6 R-40 frontend 호스팅 시 NLB 도입 검토).
+#
+# host 는 PoC 단계라 wildcard. 도메인 확보 후 api.troica.dev 등 명시.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: market-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway      # istio-cp 가 배포한 ingressgateway pod label
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+      # 운영 단계 — HTTPS redirect 강제. PoC 는 일단 HTTP 통과.
+      # tls:
+      #   httpsRedirect: true
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "*"
+      tls:
+        mode: SIMPLE
+        # cert-manager 가 발급한 Certificate Secret 명. 실 도메인 확보 후 활성.
+        # credentialName: market-tls-cert
+        # 임시 — Istio 자체 self-signed (cluster up smoke 용)
+        mode: PASSTHROUGH

@@ -1,0 +1,42 @@
+# VirtualService — Gateway 로 들어온 트래픽을 api-gateway service 로 라우팅.
+#
+# ADR-0009: 외부 진입은 api-gateway service 단일 (path 분기 X). 모든 /api/v1/** 와
+# /admin/v1/orders/** 가 api-gateway 의 8100 port 로 흘러감. path 별 백엔드 호출은
+# api-gateway 내부의 BFF (gRPC client) + SC Gateway routes 가 처리.
+#
+# market-dev / market-prod 환경 분기 — Host header 또는 path prefix 로 가능. 본 매니
+# 페스트는 PoC 단계 dev 만 정의. prod 는 도메인 확보 후 별도 VS 추가.
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: api-gateway-dev
+  namespace: istio-system
+spec:
+  hosts:
+    - "*"   # dev 단계 wildcard. 도메인 확보 후 dev.troica.dev 등 명시.
+  gateways:
+    - market-gateway
+  http:
+    - name: api-gateway-route
+      match:
+        - uri:
+            prefix: /api/v1/
+        - uri:
+            prefix: /admin/v1/orders
+        - uri:
+            prefix: /healthz
+        - uri:
+            prefix: /actuator/prometheus
+      route:
+        - destination:
+            host: api-gateway.market-dev.svc.cluster.local
+            port:
+              number: 8100
+      # 인프라 레벨 retry — api-gateway 의 BFF 도메인 fallback (Resilience4j) 과 별개로
+      # 네트워크 일시 오류에 대비 (ADR-0009 구분: Istio = 인프라, Resilience4j = 응용)
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx,reset,connect-failure
+      timeout: 30s

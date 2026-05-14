@@ -1,0 +1,21 @@
+# sidecar 자동 주입 활성화 — market-{dev,prod} namespace 의 모든 신규 pod 에 envoy
+# sidecar 가 자동 주입됨.
+#
+# 본 namespace 매니페스트 는 ArgoCD ApplicationSet (applications/appset.yaml) 이
+# 12 Application 을 sync 할 때 syncOptions=CreateNamespace=true 로 자동 생성하나,
+# 그 자동 생성은 label 없이. label 부착이 필요 → 본 매니페스트가 server-side apply
+# 로 label 추가.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: market-dev
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: market-prod
+  labels:
+    istio-injection: enabled
