@@ -49,7 +49,7 @@ jobs:
       # values per service에 의해 의미가 결정되므로 chart 자체에 대한 정적 스캔만
       # 수행함. 향후 ApplicationSet 렌더링 결과를 검사하려면 별도 step 추가 가능.
       - name: Trivy config scan (HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
