@@ -191,3 +191,4 @@ argocd appset get market-services
 | [msa-user-service](https://github.com/KTCloud-CloudNative-Troica-Team/msa-user-service) | 사용자 도메인 |
 | [msa-auth-service](https://github.com/KTCloud-CloudNative-Troica-Team/msa-auth-service) | 인증 (JWT 발급/검증) |
 | [msa-api-gateway](https://github.com/KTCloud-CloudNative-Troica-Team/msa-api-gateway) | 외부 진입점 (BFF + SC Gateway) |
+| [msa-frontend](https://github.com/KTCloud-CloudNative-Troica-Team/msa-frontend) | 프론트엔드 SPA (React 19 + Vite + TS, `market-msa-app/`) — 팀장님 작성 |
