@@ -1,0 +1,44 @@
+{{- /*
+R-03 (B) + R-42 (B) 사전: service application port 만 PERMISSIVE override.
+
+배경:
+  mesh-wide PA (platform/12-istio-gateway/manifests/peer-authentication.yaml) 가
+  STRICT 라서 sidecar 없는 client (Prometheus, monitoring ns) 가 service pod 의
+  /actuator/prometheus 호출 시 mTLS 강제 → plain HTTP 거부. R-42 (B) Grafana
+  대시보드 데이터 0.
+
+해결 (Istio 권장 옵션 1 — port-level override):
+  service pod 의 application port (Spring Boot actuator metrics 도 같은 port)
+  만 PERMISSIVE. mTLS 가능 시 사용, plain HTTP 도 허용.
+  gRPC port (있다면) 는 명시 안 함 → mesh-wide STRICT 적용 → service-to-service
+  mTLS 유지.
+
+작동 검증 (논리):
+  - service-to-service application (HTTP REST): sidecar 양쪽 → auto-mTLS (PERMISSIVE
+    라도 mTLS 가능 시 mTLS 사용)
+  - service-to-service gRPC (port grpc): mesh-wide STRICT → mTLS 강제
+  - Prometheus (sidecar 없음) → service:8005 application port: PERMISSIVE → plain
+    HTTP 허용 → metrics scrape 성공
+  - 외부 mesh 외 client → ClusterIP service: NetworkPolicy 가 별도 차단
+
+PA 우선순위 (Istio docs): workload-specific > namespace-wide > mesh-wide.
+본 PA 가 workload-specific (selector matchLabels) → mesh-wide STRICT 보다 우선.
+*/}}
+{{- if .Values.istio.enabled }}
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "microservice.fullname" . }}-metrics-override
+  labels:
+    {{- include "microservice.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "microservice.selectorLabels" . | nindent 6 }}
+  # application port (Spring Boot actuator metrics endpoint 도 동일 port 노출) 만
+  # PERMISSIVE. gRPC port (.Values.service.grpcPort) 는 의도적으로 명시 안 함 →
+  # mesh-wide STRICT 적용 → service-to-service mTLS 유지.
+  portLevelMtls:
+    "{{ .Values.service.port }}":
+      mode: PERMISSIVE
+{{- end }}
