@@ -165,6 +165,71 @@ plugins {
 
 ---
 
+### 1.8 JUnit Platform launcher 명시 누락 — `OutputDirectoryProvider not available` (R-57)
+
+**증상** (CI / 로컬 모두):
+```
+org.junit.platform.commons.JUnitException: TestEngine with ID 'junit-jupiter'
+  failed to discover tests
+Caused by: org.junit.platform.commons.JUnitException: OutputDirectoryProvider
+  not available; probably due to unaligned versions of the junit-platform-engine
+  and junit-platform-launcher jars on the classpath/module path.
+```
+
+**원인**: Gradle 8.10.2 + JUnit Platform 1.12+ 조합에서 `OutputDirectoryProvider`
+API 가 `junit-platform-launcher` 측으로 옮겨감. `spring-boot-starter-test` 는
+`junit-platform-engine` 만 transitive 로 가져와 launcher 가 누락됨 → test
+discovery 단계에서 fail.
+
+**해결**:
+```kotlin
+dependencies {
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+```
+
+7 polyrepo 모두 동일 적용 (R-57). 단순 build 검증 시점에는 잡히지 않고 실제
+test 실행 단계에서만 발생하므로 R-57 첫 PR 푸시에서 일괄 fail 후 보강 commit
+으로 해결.
+
+---
+
+### 1.9 grpc-kotlin generated stub 2-인자 시그니처 (mockk 매칭 누락, R-57)
+
+**증상** (api-gateway InventoryQueryServiceTest):
+- 정상 경로 테스트가 fallback 값으로 fail:
+  - `fetchInventory 정상 경로`: `Expected "P-42" but was ""`
+  - `fetchAll 정상 경로`: `Expected size: 2 but was: 0`
+- 같은 테스트의 fallback 경로 는 통과 — 정상 경로만 fallback 으로 빠짐
+
+**원인**: grpc-kotlin 가 생성하는 coroutine stub 메서드 시그니처는 2 인자.
+```kotlin
+public suspend fun fetchInventory(
+    request: FetchInventoryRequest,
+    headers: Metadata = Metadata(),
+): InventoryResponseDto
+```
+
+Kotlin 컴파일러는 호출 시 두 번째 default 인자를 항상 자동 전달 → 실 호출은
+`stub.fetchInventory(req, Metadata())`. mockk 매처가 1 인자 만 등록한 경우
+unmatched call → mockk 가 예외 throw → `runCatching` 이 catch → fallback 경로.
+
+**해결**:
+```kotlin
+// 잘못된 1 인자 매처
+coEvery { stub.fetchInventory(any<FetchInventoryRequest>()) } returns response
+
+// 정정 — 2 인자 매처
+coEvery { stub.fetchInventory(any<FetchInventoryRequest>(), any()) } returns response
+```
+
+**재발 방지**: generated code (Protobuf / gRPC / annotation processor 등) 시그니처
+는 추측 금지. `build/generated/sources/proto/main/grpckt/.../*GrpcKt.kt` 의 실제
+파일을 직접 확인.
+
+---
+
 ## 2. 보안 / CVE
 
 ### 2.1 Trivy action `@0.24.0` 미존재 + 공급망 공격
@@ -341,6 +406,49 @@ net/http: request canceled while waiting for connection
 **결정**: Dependabot 폐기. 추후 Renovate (정교한 정책 가능) 또는 monthly check 검토.
 
 **참고**: GitHub의 "Automatically delete head branches" 설정도 같이 켜두면 자동 PR close 시 stale 브랜치 자동 정리.
+
+---
+
+### 4.5 SonarCloud 무료 plan — custom Quality Gate 적용 불가 + PR scan main ref 부재 (R-45)
+
+**증상 1** (무료 plan 제약):
+SonarCloud Project 페이지의 Quality Gate 화면:
+> Your current plan does not allow you to associate a Quality Gate other than
+> Sonar way (Default) to this project. Upgrade plan.
+
+Organization 차원에서 custom Gate 생성은 가능하나 `Set as Default` 버튼이 paid
+feature 로 잠김. default Sonar way 의 "New Code Coverage ≥ 80%" 조건이 강제 적용
+됨.
+
+**증상 2** (PR scan main ref 부재):
+```
+Could not find ref: main in refs/heads, refs/remotes/upstream or refs/remotes/origin
+Shallow clone detected, no blame information will be provided.
+File 'X.kt' not found in project sources
+```
+
+GitHub Actions `checkout@v4` default `fetch-depth: 1` → main ref 없음 → SonarCloud
+가 PR diff 비교 불가 → file source 인식도 일부 깨짐.
+
+**원인 (Gate fail)**: PR scan 의 new code = build.gradle.kts 변경 + test 파일.
+test 파일은 coverage 측정 대상이 아니므로 new code coverage = 0% → Sonar way
+gate 항상 fail. 닭-달걀 상황 (main 머지 후 main scan 에서야 coverage 측정됨).
+
+**해결**: ADR-0011 — `sonar.qualitygate.wait = false` 일괄 적용.
+```kotlin
+sonar {
+    properties {
+        property("sonar.qualitygate.wait", "false")
+    }
+}
+```
+
+- 분석은 정상 수행 → 결과는 Dashboard 에 push
+- CI 는 Gate 평가 결과를 기다리지 않고 통과
+- Hotspot Review 는 SonarCloud UI 에서 처리 (Safe / Acknowledged / Fixed)
+
+**후속**: 단위 테스트 정착 (R-57 후속 + coverage 점진 향상) 또는 paid plan 전환
+시 `wait=true` 복구. fetch-depth: 0 옵션 추가는 별도 PR 검토.
 
 ---
 
