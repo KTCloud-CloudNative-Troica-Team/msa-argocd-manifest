@@ -145,10 +145,10 @@
 | **R-41** | **K8s 디스커버리 검증 + 장애 격리 시나리오 코드** | ⏸ | (1) ClusterIP+DNS 서비스 간 통신 검증 task (`kubectl exec` + nslookup + curl) (2) Response Aggregate Fallback 코드 — order-service가 inventory 다운 시 부분 응답 반환 + 단위 테스트 | **평가 기본 (2)-1, (2)-3**. PROJECT_PLAN §6.8 문서를 코드로 구현 |
 | **R-42** | **테스트 자동화 + Observability** | ⏸ | (1) Postman Collection (회원가입→주문생성→재고예약→확정 E2E) (2) Newman CI 단계 추가 (각 polyrepo `.github/workflows/ci.yml` 또는 별도 e2e workflow) (3) Prometheus + Grafana 대시보드 (서비스별 에러율 + P99 latency) | **평가 기본 (3)-2, (3)-3** + 선택 (3)-5. R-35 (f) 와 연계 |
 | **R-43** | **PodDisruptionBudget templates** | ✅ | `applications/charts/microservice/templates/pdb.yaml` 신설 + `values.yaml`에 `pdb.{enabled,minAvailable}` 기본값. api: minAvailable=1 (replicaCount=2 기준). worker: maxUnavailable=1 (replicaCount=1 drain 가능). prod values에서 minAvailable=2 override 권장 | **평가 심화 (1)-3**. drain 시뮬레이션 검증은 cluster up 후 R-42와 함께 |
-| **R-44** | **독립 배포 E2E + API GW ↔ Service Mesh 협업 검토** | ⏸ | (1) 한 서비스만 image bump → 다른 서비스 트래픽 무영향 E2E 검증 (Newman) (2) api-gateway (BFF + SC Gateway) + Istio (mTLS + VirtualService) 책임 분담 ADR 신설 | **평가 심화 (1)-1, (1)-2**. R-03 / R-35 (d) Istio 도입과 함께 |
+| **R-44** | **독립 배포 E2E + API GW ↔ Service Mesh 협업 검토** | 🔄 | (1) 한 서비스만 image bump → 다른 서비스 트래픽 무영향 E2E 검증 (Newman) — Phase 5 R-42와 함께 ⏸ (2) api-gateway (BFF + SC Gateway) + Istio (mTLS + VirtualService) 책임 분담 ADR ✅ [ADR-0009](./adr/0009-api-gateway-istio-mesh-collaboration.md) | **평가 심화 (1)-1 ⏸ / (1)-2 ✅**. ADR-0009 작성 완료 |
 | **R-45** | **SonarCloud (public 무료) CI 통합 + 커버리지 게이트** | ⏸ | (1) 6 polyrepo CI에 SonarCloud scan step 추가 — **public repo는 무료 plan 사용 (비용 $0)** (2) 커버리지 80% 미만 또는 Critical 이슈 발견 시 fail (3) `sonarqube-action` PR 코멘트 자동 게시 | **평가 심화 (2)-1**. Gradle JaCoCo 플러그인 연계. 모든 polyrepo가 org public 레포 → SonarCloud public plan 적합 |
-| **R-46** | **Trivy config (Kubernetes 매니페스트 스캔)** | ⏸ | 본 레포 CI에 `trivy config` 단계 신설 — `applications/`, `platform/`, `bootstrap/`, `projects/` 디렉토리 스캔. privileged / runAsRoot / hostNetwork 발견 시 fail | **평가 심화 (2)-2**. 현재 Trivy는 image scan만 (각 polyrepo CI). 본 레포는 무 |
-| **R-47** | **Slack `#security-report` 보안 알림 채널** | ⏸ | (1) Slack에 `#security-report` 채널 생성 (2) AlertManager → severity=security 라우팅 (3) Trivy/SonarQube scan 결과를 GitHub Actions에서 webhook 발신 | **평가 심화 (2)-3**. 일반 알림 채널과 분리 |
+| **R-46** | **Trivy config (Kubernetes 매니페스트 스캔)** | ✅ | 본 레포 `.github/workflows/trivy-manifest-scan.yml` 신설 — `applications/`, `platform/`, `bootstrap/`, `projects/` 스캔, SARIF GitHub Security 탭 업로드, 실패 시 Slack `#security-report` webhook 발송 | **평가 심화 (2)-2**. PR 트리거 + main push 트리거 |
+| **R-47** | **Slack `#security-report` 보안 알림 채널** | 🔄 | (1) ADR-0010 작성 ✅ — 채널 분리 결정 + AlertManager 라우팅 예시 (2) Trivy manifest scan CI에 Slack webhook step ✅ (R-46 워크플로 내) (3) AlertManager 실 매니페스트는 R-35 (e)와 함께 ⏸ (4) Slack 채널 생성 + webhook 발급은 Phase 5 진입 시 수동 | **평가 심화 (2)-3**. CI 절반 + ADR ✅, AlertManager 절반 ⏸ |
 | **R-48** | **K8s RBAC (사람 + 서비스 양쪽) 역할 분리** | ✅ | (1) **사람 RBAC**: `platform/05-rbac/` 신설 — developer(조회 ClusterRole) / operator(market-{dev,prod} Role) / sre(cluster-admin 바인딩) Group binding. Sync Wave -8 (2) **서비스 RBAC**: Helm 차트 `templates/role.yaml` 신설 — 서비스별 Role + RoleBinding, 기본 `rules: []` (최소 권한). OIDC provider 통합은 Phase 6 | **평가 심화 (3)-1, (3)-2**. Group binding subjects는 OIDC 통합 후 active |
 | **R-49** | **NetworkPolicy + 통신 차단 검증** | ✅ | (1) `platform/60-network-policies/` 신설, Sync Wave 5 (2) market-{dev,prod} 각각: default-deny-ingress + api-gateway←Istio + backends←api-gateway + user/order-admin←api-gateway + prometheus scrape 허용 (3) 검증 절차: `kubectl exec` 다른 서비스에서 curl 거부 확인 (cluster up 후 R-42와 함께) | **평가 심화 (3)-3**. Calico CNI는 NetworkPolicy enforce ✅ |
 | R-27 (a) | Gradle 중복 빌드 제거 (호스트 + Docker → Docker 단순화) | ✅ | 6 PR 머지 (product/auth/user/order/inventory/api-gateway의 `chore/r-27-*`) | 빌드 시간 ~5분 → **2분 25초** 검증 (product-service). Docker 3-stage → 2-stage, 호스트 bootJar 결과를 layered extract만. 부가: glibc base 불필요 (alpine만) → TROUBLESHOOTING §3.1 (Alpine musl) 자동 회피 |
@@ -239,14 +239,14 @@
 
 | 평가요소 | 필수/선택 | 대응 R | 상태 |
 |---|---|---|---|
-| (1)-1 독립 배포 + E2E 무영향 검증 | 필수 | **R-44** | ⏸ |
-| (1)-2 API GW ↔ Service Mesh 협업 | 필수 | **R-44** + R-03 | ⏸ |
+| (1)-1 독립 배포 + E2E 무영향 검증 | 필수 | **R-44** (검증은 Phase 5) | 🔄 |
+| (1)-2 API GW ↔ Service Mesh 협업 | 필수 | **R-44** ADR-0009 + R-03 | ✅ |
 | (1)-3 PodDisruptionBudget | 필수 | **R-43** | ✅ |
 | (1)-4 KEDA | 선택 | **R-51** | 📌 |
 | (1)-5 ArgoCD Rollouts Canary | 선택 | **R-52** | 📌 |
 | (2)-1 SonarQube 80% 게이트 | 필수 | **R-45** | ⏸ |
-| (2)-2 Trivy config (매니페스트 스캔) | 필수 | **R-46** | ⏸ |
-| (2)-3 Slack #security-report | 필수 | **R-47** | ⏸ |
+| (2)-2 Trivy config (매니페스트 스캔) | 필수 | **R-46** | ✅ |
+| (2)-3 Slack #security-report | 필수 | **R-47** ADR-0010 + R-46 CI webhook (AlertManager는 R-35 (e)와 함께) | 🔄 |
 | (2)-4 OWASP ZAP DAST | 선택 | **R-54** | 📌 |
 | (2)-5 OPA Gatekeeper | 선택 | **R-53** | 📌 |
 | (3)-1 RBAC 역할 분리 | 필수 | **R-48** | ✅ |
@@ -257,7 +257,7 @@
 
 **필수 항목 (총 18개) 모두 R-NN 매핑 완료 ✅**
 - 기본 필수 9 중 ✅ 6 완료 / ⏸ 3 (R-41/R-42)
-- 심화 필수 9 중 ✅ 3 (R-43/R-48 사람·서비스 양쪽) / 🔄 1 (R-49 매니페스트 작성·검증 대기) / ⏸ 5 (R-44/R-45/R-46/R-47)
+- 심화 필수 9 중 ✅ 5 (R-43/R-46 + R-48 사람·서비스 + R-44 ADR) / 🔄 3 (R-44 검증, R-47 AlertManager, R-49 검증) / ⏸ 1 (R-45)
 
 ---
 
