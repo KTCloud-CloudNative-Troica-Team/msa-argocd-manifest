@@ -1,0 +1,79 @@
+# api-gateway ENV 바인딩 — Redis (Rate Limit) + gRPC client (5 service) + routes.
+#
+# api-gateway 의 application.yml 은 DB / JWT secret 직접 사용 X (gRPC 로 auth-service
+# 호출). 따라서 ExternalSecret 은 placeholder 만 (envFrom secretRef 충족용).
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: api-gateway-secrets
+  namespace: market-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: api-gateway-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        # Spotahome Redis auth 미설정. application.yml 의 default 가 password 미설정
+        # 이라 빈 ENV 로 충분.
+        REDIS_PASSWORD: ""
+  # 실 데이터 fetch X — Secrets Manager 호출 안 함. data 비어 있음.
+  data: []
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: market-dev
+data:
+  # Spotahome inventory-redis 의 direct service. R-50 SC Gateway Rate Limit 의
+  # Reactive Redis client 가 이걸 사용.
+  REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
+  REDIS_PORT: "6379"
+  # SC Gateway routes 의 backend URI
+  ROUTE_USER_SERVICE_URI: "http://user-service.market-dev.svc.cluster.local:8004"
+  ROUTE_ORDER_SERVICE_URI: "http://order-service.market-dev.svc.cluster.local:8002"
+  # BFF (gRPC client) backend 들 — static://host:port 형식 (Spring gRPC 명세)
+  GRPC_PRODUCT_SERVICE_ADDR: "static://product-service.market-dev.svc.cluster.local:9001"
+  GRPC_ORDER_SERVICE_ADDR: "static://order-service.market-dev.svc.cluster.local:9002"
+  GRPC_INVENTORY_SERVICE_ADDR: "static://inventory-service.market-dev.svc.cluster.local:9003"
+  GRPC_AUTH_SERVICE_ADDR: "static://auth-service.market-dev.svc.cluster.local:9005"
+  SERVER_PORT: "8100"
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: api-gateway-secrets
+  namespace: market-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: api-gateway-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        REDIS_PASSWORD: ""
+  data: []
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: market-prod
+data:
+  REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
+  REDIS_PORT: "6379"
+  ROUTE_USER_SERVICE_URI: "http://user-service.market-prod.svc.cluster.local:8004"
+  ROUTE_ORDER_SERVICE_URI: "http://order-service.market-prod.svc.cluster.local:8002"
+  GRPC_PRODUCT_SERVICE_ADDR: "static://product-service.market-prod.svc.cluster.local:9001"
+  GRPC_ORDER_SERVICE_ADDR: "static://order-service.market-prod.svc.cluster.local:9002"
+  GRPC_INVENTORY_SERVICE_ADDR: "static://inventory-service.market-prod.svc.cluster.local:9003"
+  GRPC_AUTH_SERVICE_ADDR: "static://auth-service.market-prod.svc.cluster.local:9005"
+  SERVER_PORT: "8100"

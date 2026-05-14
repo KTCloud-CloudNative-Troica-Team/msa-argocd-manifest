@@ -1,0 +1,75 @@
+# product-service ENV 바인딩 — DB 만.
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: product-service-secrets
+  namespace: market-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: product-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        PRODUCT_DB_PASSWORD: "{{ .dbPassword }}"
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/product-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-service-config
+  namespace: market-dev
+data:
+  PRODUCT_DB_HOST: "product-db-rw.databases.svc.cluster.local"
+  PRODUCT_DB_PORT: "5432"
+  PRODUCT_DB_NAME: "product"
+  PRODUCT_DB_USERNAME: "product"
+  JPA_DDL_AUTO: "update"
+  JPA_SHOW_SQL: "false"
+  SERVER_PORT: "8001"
+  GRPC_SERVER_PORT: "9001"
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: product-service-secrets
+  namespace: market-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: product-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        PRODUCT_DB_PASSWORD: "{{ .dbPassword }}"
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/product-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-service-config
+  namespace: market-prod
+data:
+  PRODUCT_DB_HOST: "product-db-rw.databases.svc.cluster.local"
+  PRODUCT_DB_PORT: "5432"
+  PRODUCT_DB_NAME: "product"
+  PRODUCT_DB_USERNAME: "product"
+  JPA_DDL_AUTO: "validate"
+  JPA_SHOW_SQL: "false"
+  SERVER_PORT: "8001"
+  GRPC_SERVER_PORT: "9001"

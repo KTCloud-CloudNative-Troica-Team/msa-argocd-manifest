@@ -1,0 +1,88 @@
+# inventory-service ENV 바인딩 — DB + Redis + Kafka. worker 도 같은 secret/config 사용.
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: inventory-service-secrets
+  namespace: market-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: inventory-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        INVENTORY_DB_PASSWORD: "{{ .dbPassword }}"
+        # Spotahome Redis auth 미설정 → 빈 password
+        REDIS_PASSWORD: ""
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/inventory-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-service-config
+  namespace: market-dev
+data:
+  INVENTORY_DB_HOST: "inventory-db-rw.databases.svc.cluster.local"
+  INVENTORY_DB_PORT: "5432"
+  INVENTORY_DB_NAME: "inventory"
+  INVENTORY_DB_USERNAME: "inventory"
+  JPA_DDL_AUTO: "update"
+  JPA_SHOW_SQL: "false"
+  REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: "market-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  KAFKA_TOPIC_ORDER_PENDING: "order.pending"
+  KAFKA_TOPIC_ORDER_INVENTORY_RESERVED: "order.inventory-reserved"
+  SERVER_PORT: "8003"
+  GRPC_SERVER_PORT: "9003"
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: inventory-service-secrets
+  namespace: market-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: inventory-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        INVENTORY_DB_PASSWORD: "{{ .dbPassword }}"
+        REDIS_PASSWORD: ""
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/inventory-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-service-config
+  namespace: market-prod
+data:
+  INVENTORY_DB_HOST: "inventory-db-rw.databases.svc.cluster.local"
+  INVENTORY_DB_PORT: "5432"
+  INVENTORY_DB_NAME: "inventory"
+  INVENTORY_DB_USERNAME: "inventory"
+  JPA_DDL_AUTO: "validate"
+  JPA_SHOW_SQL: "false"
+  REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: "market-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  KAFKA_TOPIC_ORDER_PENDING: "order.pending"
+  KAFKA_TOPIC_ORDER_INVENTORY_RESERVED: "order.inventory-reserved"
+  SERVER_PORT: "8003"
+  GRPC_SERVER_PORT: "9003"

@@ -1,0 +1,75 @@
+# user-service ENV 바인딩 — DB 만 (Redis / Kafka / JWT 사용 안 함).
+---
+# market-dev
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: user-service-secrets
+  namespace: market-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: user-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        USER_DB_PASSWORD: "{{ .dbPassword }}"
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/user-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: market-dev
+data:
+  USER_DB_HOST: "user-db-rw.databases.svc.cluster.local"
+  USER_DB_PORT: "5432"
+  USER_DB_NAME: "user"
+  USER_DB_USERNAME: "user"
+  JPA_DDL_AUTO: "update"
+  JPA_SHOW_SQL: "false"
+  SERVER_PORT: "8004"
+---
+# market-prod
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: user-service-secrets
+  namespace: market-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+  target:
+    name: user-service-secrets
+    creationPolicy: Owner
+    template:
+      data:
+        USER_DB_PASSWORD: "{{ .dbPassword }}"
+  data:
+    - secretKey: dbPassword
+      remoteRef:
+        key: troica/db/user-db
+        property: password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: market-prod
+data:
+  USER_DB_HOST: "user-db-rw.databases.svc.cluster.local"
+  USER_DB_PORT: "5432"
+  USER_DB_NAME: "user"
+  USER_DB_USERNAME: "user"
+  JPA_DDL_AUTO: "validate"
+  JPA_SHOW_SQL: "false"
+  SERVER_PORT: "8004"
