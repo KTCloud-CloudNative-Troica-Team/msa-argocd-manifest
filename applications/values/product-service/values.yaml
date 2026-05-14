@@ -6,6 +6,7 @@ image:
 
 service:
   port: 8001          # base application.yaml의 SERVER_PORT default와 일치 (SPEC §1.4)
+  grpcPort: 9001      # api-gateway BFF 의 gRPC client 가 product-service.fetch* 호출
 
 envFrom:
   - secretRef:

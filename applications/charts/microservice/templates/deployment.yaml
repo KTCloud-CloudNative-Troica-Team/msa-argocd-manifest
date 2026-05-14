@@ -26,6 +26,10 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
+            {{- if .Values.service.grpcPort }}
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+            {{- end }}
           env:
             {{- if .Values.springProfilesActive }}
             - name: SPRING_PROFILES_ACTIVE
