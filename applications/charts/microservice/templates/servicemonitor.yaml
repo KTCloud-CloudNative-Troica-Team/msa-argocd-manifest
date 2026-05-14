@@ -1,0 +1,56 @@
+{{- /*
+R-42 (B) 사전: Prometheus 가 service pod 의 /prometheus actuator endpoint scrape.
+
+배경
+  kube-prometheus-stack values 의 serviceMonitorSelectorNilUsesHelmValues=false 라
+  모든 namespace 의 ServiceMonitor 자동 발견. 단 매니페스트 에 ServiceMonitor CR
+  자체가 없으면 scrape target 등록 X.
+
+설계
+  - port: http (service.yaml 의 named port "http")
+  - path: /prometheus (application.yml 의 management.endpoints.web.base-path=/ +
+    default mapping. /actuator/prometheus 아님 — base-path override 결과)
+  - interval: 30s (PoC 단계 적정 — kube-prometheus-stack default 와 일치)
+
+relabelings (critical)
+  Spring Boot Micrometer 가 metric 에 'application' label 자동 부착 X. Grafana
+  대시보드 (platform/30-kube-prometheus-stack/dashboards/troica-services.yaml) 의
+  PromQL filter `application=~"product-service|order-service|..."` 가 작동하려면
+  scrape 시점에 label 부착 필요.
+
+  __meta_kubernetes_service_label_app_kubernetes_io_name = service object 의
+  label app.kubernetes.io/name (예: "auth-service"). target relabeling 으로
+  모든 metric series 에 application 라벨 자동 부착.
+
+대안: management.metrics.tags.application 을 application.yml 에 추가하면 service
+코드 측에서 부착 가능. 단 6 polyrepo 변경 필요 → ServiceMonitor relabelings 가
+더 효율 (인프라 측 1 곳 fix).
+*/}}
+{{- if .Values.istio.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "microservice.fullname" . }}
+  labels:
+    {{- include "microservice.labels" . | nindent 4 }}
+    # kube-prometheus-stack 의 prometheus-operator 가 본 label 로 검색 (default
+    # serviceMonitorSelector). 명시 안 해도 작동하나 (NilUsesHelmValues=false)
+    # 일관성 위해 추가.
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      {{- include "microservice.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /prometheus
+      interval: 30s
+      # PA portLevelMtls (peerauthentication.yaml) 가 application port PERMISSIVE.
+      # Prometheus (monitoring ns, sidecar 없음) 가 plain HTTP scrape 가능.
+      scheme: http
+      # metric 의 모든 시리즈에 application label 부착 — Grafana 대시보드 매칭.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+          targetLabel: application
+          action: replace
+{{- end }}
