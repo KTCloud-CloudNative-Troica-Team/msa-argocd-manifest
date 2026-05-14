@@ -1,0 +1,15 @@
+# PeerAuthentication STRICT — sidecar 가 주입된 모든 pod 사이의 통신을 mTLS 강제.
+#
+# ADR-0009 east-west 책임. 평가 심화 (1)-2 의 "서비스 메시 mTLS" 부분 cover.
+#
+# Mesh-wide (istio-system 의 PeerAuthentication) 적용 — 모든 namespace 영향.
+# Strimzi Kafka / CNPG Postgres / Redis Sentinel 등 sidecar 미주입 stateful workload
+# 는 영향 받지 않음 (이들은 mTLS namespace 외부에서 접근).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
