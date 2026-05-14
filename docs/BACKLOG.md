@@ -165,20 +165,25 @@
 | R-45 | SonarCloud (public 무료) CI 통합 + Quality Gate 정책 | ✅ | 심화 (2)-1 (필수) | 7 polyrepo CI sonar step + sonarcloud.io 셋업 + [ADR-0011](./adr/0011-sonarcloud-quality-gate-policy.md) `wait=false` 결정 + Hotspot Review 절차. 자세히 [TROUBLESHOOTING §4.5](./TROUBLESHOOTING.md) |
 | R-47 | Slack `#security-report` 보안 알림 채널 (ADR + CI webhook + AlertManager) | 🔄 | 심화 (2)-3 (필수) | [ADR-0010](./adr/0010-security-alerting-strategy.md) ✅. Trivy workflow Slack step ✅. AlertManager severity=security 라우팅 매니페스트 ✅ (R-35 e 와 함께). 채널 생성 + Org Secret 등록 ⏸ (C) |
 | R-57 | JUnit 단위 테스트 (7 polyrepo, ~48 케이스) | ✅ | 기본 (3)-1 (필수) | 7 PR 머지. 도메인 entity / state machine / JWT round-trip / CB Fallback. 작업 중 발견 3건: [TROUBLESHOOTING §1.8, §1.9](./TROUBLESHOOTING.md) |
-| R-35 (A) | Platform 매니페스트 7 set 작성 (cert-manager → external-secrets-config) | ✅ | 기본 (1)-3·(1)-4 (필수/선택) + (3)-3·(3)-6 (필수/선택) + 심화 (1)-2·(2)-3·(3)-2 (필수) | PR #78 / commit `974e01d`. 매니페스트 22 파일 — `platform/{00-cert-manager, 10-istio-base, 11-istio-cp, 30-{kube-prometheus-stack, loki, tempo}, 40-{cnpg, strimzi, redis, external-secrets}-operator, 50-{kafka-cluster, postgres-clusters, redis-cluster}, 91-external-secrets-config}/`. Sync Wave -10 ~ 3 |
+| R-35 (A) | Platform 매니페스트 7 set 작성 (cert-manager → external-secrets-config) | ✅ | 기본 (1)-3·(1)-4 (필수/선택) + (3)-3·(3)-6 (필수/선택) + 심화 (1)-2·(2)-3·(3)-2 (필수) | PR #78 / commit `974e01d`. 매니페스트 22 파일 + 첫 cluster up 후 보완 4 PR: PR #85 ClusterSecretStore IMDS 인증 ([TROUBLESHOOTING §7.11](./TROUBLESHOOTING.md)), PR #86 EBS CSI driver (self-managed kubeadm 필수, [§7.8](./TROUBLESHOOTING.md)), PR #87 platform-project sourceRepos 누락 보강 ([§7.6](./TROUBLESHOOTING.md)), PR #88 Istio gateway helm values `defaults:` schema wrapping ([§7.9](./TROUBLESHOOTING.md)) |
 | R-03 (A) | Istio Gateway + VirtualService + PeerAuthentication + DestinationRule + namespace injection | ✅ | 심화 (1)-2 (필수) | PR #81 / commit `e7c35a8`. `platform/12-istio-gateway/{application.yaml, manifests/{gateway, virtualservice, peer-authentication, destination-rule, namespace-injection}.yaml}` 6 파일. Sync Wave -3. mesh-wide mTLS STRICT + market-{dev,prod} 각 outlierDetection |
 | R-42 (A) | Postman Collection + Newman CI + Grafana 도메인 대시보드 | ✅ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | PR #79 / commit `d2d371a`. `tests/e2e/troica-market-e2e.postman_collection.json` 7 step 시나리오 (실 `*RestControllerAdapter.kt` endpoint 기준) + `.github/workflows/e2e-newman.yml` (workflow_dispatch + 매일 KST 10:00 + paths) + `platform/30-kube-prometheus-stack/dashboards/troica-services.yaml` (req rate / 5xx 에러 / P99 latency / Kafka lag / JVM heap / CB state 6 panel) |
+| R-25 (A) / R-33 (A) | Service 별 ExternalSecret + ConfigMap 12 쌍 (envFrom 충족) | ✅ | 심화 (3)-2 (필수) | PR #89. `platform/91-external-secrets-config/manifests/app-bindings-{6 service}.yaml`. 6 service × 2 env (dev/prod) = 24 리소스. ExternalSecret 이 service Helm 의 `envFrom.secretRef.name={svc}-secrets` + `configMapRef.name={svc}-config` 정확히 생성. DB password / JWT_SECRET 는 Secrets Manager 에서, K8s service DNS (CNPG/Spotahome/Strimzi) 는 ConfigMap 정적값 [§7.10](./TROUBLESHOOTING.md) |
 
 ### (B) cluster up 후 실 검증 (R-35 platform 배포 후 진행)
 
 > (A) 매니페스트는 모두 main 머지 ✅. cluster up 시 ArgoCD 가 Sync Wave 순으로 자동 reconcile. 본 섹션은 reconcile 후 실 작동 검증만 추적.
+>
+> **첫 cluster up 사이클 (2026-05-14)**: 다수 매니페스트 누락 발견 → 9 fix PR 추가 (#85/#86/#87/#88/#89 매니페스트 측 + #13/#15/#16 인프라 측). 자세히 [TROUBLESHOOTING §7.6 ~ §7.11, §5.4 ~ §5.5](./TROUBLESHOOTING.md). 두번째 사이클 부터 깨끗한 진행 기대.
+>
+> **검증 순서 (의존성 순)**: 1.R-35(B) → 2.R-25 → 3.R-33 → 4.R-03(B) → 5.R-41(B) → 6.R-42(B) → 7.R-47(B) → 8.R-44(B) → 9.R-48(B) → 10.R-49(B) → 11.R-50(B)
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
-| R-35 (B) | Platform 배포 reconcile 검증 (a~g) | ⏸ | (A) 와 동일 평가요소들의 실 검증 | (a) CNPG Cluster × 6 primary/replica up (b) RedisFailover × 2 (c) Kafka KRaft 3 broker + 4 KafkaTopic up + consumer lag exporter scrape (d) istio-cp pod + ingressgateway NodePort 30080/30443 (e) AlertManager → Slack #alerts / #security-report 라우팅 (f) Prometheus targets scrape + Grafana datasource up (g) ExternalSecret sync → Secret 생성. **Phase 5 본 작업, 비용 영향 大** |
+| R-35 (B) | Platform 배포 reconcile 검증 (a~g) | ⏸ | (A) 와 동일 평가요소들의 실 검증 | (a) CNPG Cluster × 6 primary/replica up (b) RedisFailover × 2 (c) Kafka KRaft 3 broker + 4 KafkaTopic up + consumer lag exporter scrape (d) istio-cp pod + ingressgateway NodePort 30080/30443 (e) AlertManager → Slack #alerts / #security-report 라우팅 (f) Prometheus targets scrape + Grafana datasource up (g) ExternalSecret sync → Secret 생성. **첫 사이클 부분 검증**: (g) ExternalSecret 10 개 SecretSynced=True ✅ + (a) 3/6 PVC Bound + Loki/Tempo Running. **재검증 필요** |
 | R-03 (B) | Istio mesh 실 작동 검증 | ⏸ | 심화 (1)-2 (필수) | (1) `istioctl proxy-status` 모든 pod SYNCED (2) Gateway 외부 진입 — curl → api-gateway 도달 (3) PeerAuthentication mTLS — `tcpdump` 으로 sidecar 간 통신 암호화 확인 (4) DestinationRule outlier ejection 시연 |
-| R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ⏸ | 심화 (3)-2 (필수) | R-33 / R-35 (g) 와 묶음. ExternalSecret → AWS Secrets Manager → Secret 생성 → auth-service / api-gateway 가 ENV 로 주입 |
-| R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | 심화 (3)-2 (필수) | ExternalSecrets Operator + AWS Secrets Manager. 9 secrets (DB credentials × 6 + JWT × 2 + Slack webhooks + Grafana admin) |
+| R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ⏸ | 심화 (3)-2 (필수) | R-33 / R-35 (g) 와 묶음. PR #89 의 `auth-service-secrets` 가 troica/auth/jwt-secret 으로 채워서 auth-service / api-gateway 에 JWT_SECRET ENV 주입 |
+| R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | 심화 (3)-2 (필수) | ExternalSecrets Operator + AWS Secrets Manager. 9 secrets 등록 ✅ + PR #89 service 별 ExternalSecret 12 + ConfigMap 12. 첫 사이클 검증: 10 ExternalSecret SecretSynced=True ✅ |
 | R-41 (B) | K8s 디스커버리 + 장애 격리 실 검증 | ⏸ | 기본 (2)-1·(2)-3 (필수) | (1) ClusterIP+DNS `kubectl exec` + nslookup + curl (2) Fallback 시연 (inventory Pod down → 빈 list 반환) |
 | R-42 (B) | Postman + Newman E2E + Prometheus + Grafana 실 통과 | ⏸ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | workflow_dispatch 로 baseUrl=Istio Gateway 지정 → 7 step 시나리오 통과. Grafana 6 panel 실 데이터 확인 |
 | R-44 (B) | 독립 배포 E2E 무영향 검증 (Newman) | ⏸ | 심화 (1)-1 (필수) | 한 서비스만 image bump → 다른 서비스 트래픽 무영향 시연. Newman 으로 비교 |
@@ -245,6 +250,8 @@
 | R-28 | netty 4.2.x BOM 전환 → CVE-2026-42577 해제 | 📌 | Spring Boot 3.5.15+ 또는 reactor-netty 1.3.x release 모니터링. 외부 의존성 |
 | R-36 | ansible playbook + README 일본어 → 한국어 | ✅ | `i18n/ansible-japanese-to-korean`. 14 파일 일괄 |
 | R-38 | common-libs `QuerydslConfig` final → Spring CGLIB proxy 실패 | ✅ | `fix/r-38-kotlin-spring-plugin` + v0.3.1 publish + 6 서비스 의존성 bump. [TROUBLESHOOTING §1.7](./TROUBLESHOOTING.md) |
+| R-59 | Worker 노드 사양 t3.medium → t3.large (Phase 5 메모리 대비) | ✅ | msa-provisioning PR #13. master 3 t3.medium 유지 (control plane only) + worker 3 t3.large. 첫 사이클 디버깅에서 worker 4 GB 부족으로 CoreDNS 가 worker 우선 못 뜨고 service pod schedule 실패 관찰. 비용 영향: $0.156/h 증가 (1주일 +$26). [TROUBLESHOOTING §5.5](./TROUBLESHOOTING.md) |
+| R-60 | destroy-temp.ps1 한글 깨짐 fix + orphan EBS 자동 cleanup + 비용 sanity check | ✅ | msa-provisioning PR #14 (`[Console]::OutputEncoding`+`chcp 65001` 시도 — 부족) → PR #16 (한글 영어 변환 + orphan EBS 정리 + 비용 0 자원 sanity check). 첫 사이클 destroy 후 사용자가 AWS 콘솔 직접 확인 시 PVC 동적 EBS 가 orphan 으로 남아 있음을 발견 — 본 fix 가 자동화. [TROUBLESHOOTING §5.4, §6.4](./TROUBLESHOOTING.md) |
 
 ### 폐기 (작업 안 하기로 결정)
 

@@ -554,6 +554,68 @@ ansible playbook이 `/tmp/ecr-credential-provider`를 노드로 copy.
 
 ---
 
+### 5.4 PVC 동적 생성 EBS 가 cluster destroy 후 orphan — 비용 누수 (R-60)
+
+**증상**: terraform destroy-temp 완료 후 AWS 콘솔 EBS 콘솔에서 `available` 상태
+EBS volume 다수 발견. tag `kubernetes.io/created-for/pvc/name` 가짐. 시간당 비용
+계속 발생.
+
+**원인**: PVC 로 동적 생성된 EBS 는 terraform 관리 X. EBS CSI driver 가 PVC 삭제
+시 EBS 도 자동 정리하나, **cluster 가 destroy 되면 CSI controller 도 사라짐**
+→ orphan PVC 와 그에 연결된 EBS 가 AWS 에 남음.
+
+**해결**: `scripts/destroy-temp.ps1` 에 자동 cleanup task 추가 (PR #16):
+```powershell
+$orphans = aws ec2 describe-volumes `
+    --filters Name=status,Values=available Name=tag-key,Values=kubernetes.io/created-for/pvc/name `
+    --query 'Volumes[].VolumeId' --output text --region ap-northeast-2
+$orphans -split '\s+' | Where-Object { $_ } | ForEach-Object {
+    aws ec2 delete-volume --volume-id $_ --region ap-northeast-2
+}
+```
+
+추가로 destroy 끝에 비용 sanity check — EBS / Snapshot / LoadBalancer / Unassociated
+EIP / NAT Gateway / EFS 6 종류 개수 출력 (0 = green, 0 아니면 red).
+
+**재발 방지**:
+- 신규 stateful workload 도입 시 PVC 동적 EBS 가 새 종류 자원 만드는지 확인
+- destroy-temp 의 sanity check 가 다음 사이클 자원 종류 확장 trigger
+- 새 종류 추가 (RDS / EFS CSI / ALB 등) 시 destroy-temp cleanup 도 함께 PR
+
+---
+
+### 5.5 Worker 노드 사양 부족 — CoreDNS 가 master 로 schedule + service pod fail (R-59)
+
+**증상**: 첫 cluster up (worker × 3 t3.medium 4 GB) 후 ArgoCD root-app SYNC=Unknown,
+application-controller log:
+```
+Reconnect to redis because error: "dial tcp: lookup argocd-redis: i/o timeout"
+ComparisonError: failed to generate manifest ... dns: lookup argocd-repo-server
+on 10.96.0.10:53: dial udp i/o timeout
+```
+
+**진단 (먼 길)**: 처음에 Calico IPIP tunnel / SG / DNS UDP 등 의심하며 5 회 진단
+사이클. 결정적 단서 — `kube-prometheus-stack-prometheus-node-exporter` 가
+**`Evicted`** 상태. 메모리 압박 신호.
+
+**근본 원인**: worker × 3 t3.medium = 12 GB 총. Phase 5 매니페스트 (Prometheus
+1-2 GB + Kafka 3 GB + Postgres × 6 × 2 = 3 GB + Istio + Loki/Tempo + 6 polyrepo
+× 2 env ...) 합산 18-20 GB 예상. 부족.
+
+CoreDNS 가 worker 우선이어야 하나 worker 메모리 부족으로 master (taint 무시
+toleration) 에 schedule → master ↔ worker pod 사이 service 트래픽 timeout (실
+원인 미규명, 메모리 압박과 관련 추정).
+
+**해결**: msa-provisioning PR #13. worker 만 t3.large (8 GB) 로 변경. master 는
+t3.medium 유지 (control plane only). 비용 +$0.156/h.
+
+**재발 방지**:
+- 새 stateful workload 추가 시 worker capacity 합산 확인
+- `kubectl top nodes` + `kubectl describe nodes | grep Allocatable` 로 사전 점검
+- Pending pod 의 events 가 `Insufficient memory` 면 사양 부족 확정
+
+---
+
 ### 5.3 PR 2가 PR 1 자원 참조 → terraform validate 실패
 
 **증상**: PR 2의 `aws_iam_role_policy_attachment`가 PR 1의 `data.aws_iam_role` 참조. PR 2 단독 validate 실패.
@@ -633,6 +695,43 @@ must be one of: BlockPublicAcls, IgnorePublicAcls, BlockPublicPolicy, RestrictPu
 **원인**: 정확한 이름은 `RestrictPublicBuckets`. AWS docs 작성 시 흔한 오타.
 
 **해결**: 명령어의 `RestrictPublicAccess=true` → `RestrictPublicBuckets=true`.
+
+---
+
+### 6.5 destroy-temp.ps1 한글 깨짐 — PS 5.1 parser CP949 디코딩 (R-60)
+
+**증상** (destroy 실행 시):
+```
+==> Plan (?꾩떆 ?먯썝留?destroy)
+... (정상 동작은 함)
+==> ?꾨즺. ?곴뎄 ?먯썝(OIDC/IAM/ECR/KMS)?
+```
+
+**1차 시도 (PR #14, 실패)**: 스크립트 시작에 console output encoding 강제.
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$null = chcp 65001
+```
+→ 여전히 깨짐.
+
+**근본 원인**: PowerShell 5.1 의 **parser stage** 가 스크립트 파일을 시스템 코드
+페이지 (한국 환경 = CP949) 로 디코드 후 메모리 로드. 파일은 UTF-8 (no BOM) 인데
+parser 가 ANSI 로 해석 시도 → 한글 byte 가 다른 character 로 매핑된 채로 메모리에
+들어감. 그 후 `[Console]::OutputEncoding=UTF8` / `chcp 65001` 가 콘솔 출력 stage 의
+encoding 만 바꾸므로 **이미 깨진 메모리 문자열은 그대로** 출력.
+
+**해결 옵션**:
+- UTF-8 BOM 추가 — PS 5.1 parser 가 BOM 인식 후 UTF-8 로 처리. 단 git workflow 에서
+  BOM 누락 위험 (`.gitattributes` 로 강제 필요)
+- ASCII (영어) 만 사용 — 가장 안전. 어떤 환경에서도 작동
+
+**채택**: PR #16 — 모든 user-facing 한글 string 을 영어로 전환. ASCII safe.
+`destroy-temp.sh` (bash) 는 parser 가 LANG 따라가므로 한글 그대로 유지.
+
+**재발 방지**:
+- PowerShell 5.1 호환 필요한 스크립트는 ASCII 만 사용
+- 한글 메시지가 정말 필요하면 UTF-8 BOM + `.gitattributes` 의 `*.ps1 working-tree-encoding=UTF-8-BOM`
 
 ---
 
@@ -723,6 +822,195 @@ fatal: [K8S_VARS_HOLDER]: UNREACHABLE!
 **원인**: `join-master.yaml`에서 vars 저장용 가상 호스트. inventory에 없는 상태.
 
 **영향**: 다른 노드의 task는 모두 정상. 가상 호스트의 `gather facts` 실패만 발생. **무시 가능**.
+
+---
+
+### 7.6 ArgoCD AppProject sourceRepos 와 Helm chart repoURL mismatch (PR #87)
+
+**증상**: cluster up 후 다수 Application 이 `SYNC=Unknown`. conditions:
+```
+InvalidSpecError: application repo https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+is not permitted in project 'platform'
+```
+
+**원인**: ArgoCD 의 `AppProject.spec.sourceRepos` 가 보안 제약 (allow-list). 새 helm
+chart 를 platform Application 에 추가하면서 `projects/platform-project.yaml` 의
+sourceRepos 갱신을 누락. R-35 작성 시 4 개 sourceRepo 누락 발견:
+- `https://kubernetes-sigs.github.io/aws-ebs-csi-driver` (EBS CSI)
+- `https://charts.external-secrets.io` (ESO)
+- `https://spotahome.github.io/redis-operator` (sourceRepos 는 `ot-container-kit` 잘못 등록)
+- `https://strimzi.io/charts/` (trailing slash mismatch)
+
+ArgoCD 의 sourceRepos 매칭은 **URL 정확 일치** (trailing slash 까지).
+
+**해결**: `projects/platform-project.yaml` 의 sourceRepos 에 4 개 추가 / 교체.
+
+**재발 방지**:
+- 새 helm chart application 추가 시 `projects/<project>-project.yaml` 의 sourceRepos
+  도 동시 PR 에 포함
+- helm repo URL 의 trailing slash 매니페스트 ↔ AppProject 일치 확인
+
+---
+
+### 7.7 ArgoCD selfHeal=true 가 cluster 측 kubectl patch 를 즉시 되돌림 (Lesson)
+
+**증상**: §7.6 디버깅 중 `kubectl -n argocd patch appproject platform --type json -p
+'[{"op":"add","path":"/spec/sourceRepos/-","value":"..."}]'` 으로 sourceRepo 4 개
+추가. 30 초 후 application 상태 확인 시 여전히 `InvalidSpecError` + sourceRepos
+개수 7 (추가 전 8 보다 더 적음 — 다른 항목까지 reset).
+
+**원인**: `platform-root` Application 의 `spec.syncPolicy.automated.selfHeal=true`.
+ArgoCD 가 cluster state (우리 patch) ↔ Git main (옛 sourceRepos) 비교 시 자동으로
+main desired state 로 cluster 강제 동기화 → 우리 patch 즉시 무효화.
+
+**해결**: cluster 측 kubectl patch 대신 **Git main 머지 후 ArgoCD 자동 reconcile**
+대기. selfHeal 작동하는 환경에서 cluster 즉시 fix 는 의미 없음.
+
+**디버깅 진행 시 lesson**:
+- ArgoCD application status conditions message 가 명확한 원인 (`InvalidSpecError`,
+  `ComparisonError`) 을 직접 알려주면 그것부터 따라감
+- cluster 측 patch 시도 전 `selfHeal` 여부 확인 (`kubectl get application <name> -o
+  jsonpath='{.spec.syncPolicy.automated.selfHeal}'`)
+
+---
+
+### 7.8 self-managed kubeadm 에서 EBS CSI driver 미설치 → StorageClass 0 개 (PR #86 + PR #15)
+
+**증상**: cluster up 후 모든 PVC `Pending`:
+```
+$ kubectl get pvc -A
+... 10 PVCs all Pending (CNPG × 6 + Grafana/Prometheus/Loki/Tempo)
+
+$ kubectl get sc
+No resources found
+
+$ kubectl describe pod prometheus-... | grep Events
+Warning  FailedScheduling  pod has unbound immediate PersistentVolumeClaims
+```
+
+**원인**: EKS 와 달리 self-managed kubeadm cluster 는 EBS CSI driver 가 자동 설치
+되지 않음. PVC 가 binding 할 StorageClass 가 0 개.
+
+**해결** (2 PR):
+1. **msa-argocd-manifest PR #86** — `platform/05-ebs-csi/application.yaml` 추가.
+   helm chart `aws-ebs-csi-driver v2.35.1`, Sync Wave -9 (cert-manager 다음).
+   gp3 StorageClass (default, encrypted, `WaitForFirstConsumer`).
+2. **msa-provisioning PR #15** — EC2 node IAM role 에 AWS managed
+   `AmazonEBSCSIDriverPolicy` 부착. EBS CSI controller 가 IMDS → EC2 node IAM 으로
+   AWS API (CreateVolume / AttachVolume / etc) 호출.
+
+**재발 방지**:
+- self-managed cluster 의 platform setup checklist 에 EBS CSI driver 포함
+- EKS 가정 매니페스트 도입 시 IRSA → instance profile 인증으로 전환 필요
+
+---
+
+### 7.9 Helm chart values.schema.json strict — Istio gateway 1.23 `defaults:` wrapping (PR #88)
+
+**증상** (`istio-cp` Application):
+```
+ComparisonError: helm template ... failed:
+gateway:
+- at '': additional properties 'replicaCount', 'resources', 'service', 'defaults' not allowed
+```
+
+**원인**: Istio gateway helm chart **1.23 의 `values.schema.json`** 는 top-level 에
+`defaults:` wrapper 만 허용 (`additionalProperties: false`). chart values.yaml 주석
+은 "`--set replicaCount=X` 로 직접 설정 가능" 이라고 안내하나 — 그건 helm CLI 의
+`--set` flag 자동 flatten 일 때만. ArgoCD 처럼 **values yaml 통째로 전달 시 schema
+그대로 적용** → reject.
+
+**해결**: 매니페스트 values 를 `defaults:` 안으로 nesting.
+```yaml
+# Before
+service:
+  type: NodePort
+replicaCount: 1
+
+# After
+defaults:
+  service:
+    type: NodePort
+  replicaCount: 1
+  autoscaling:
+    enabled: false   # chart default true 라 PoC 에 불필요
+```
+
+**검증**: `helm pull istio/gateway --version 1.23.3 --untar` 후 `values.schema.json`
+의 root keys 직접 확인 — `'$ref'` + `'defaults'` 만 있고 root properties 없음.
+
+**재발 방지**:
+- 새 helm chart 도입 시 `helm pull --untar` + `values.schema.json` 의 root structure
+  먼저 확인
+- ArgoCD `spec.source.helm.skipSchemaValidation: true` 는 임시 우회용 (PoC), 운영
+  단계에는 정식 schema 따라야 함
+
+---
+
+### 7.10 ExternalSecret target.name 과 service Helm envFrom 이름 mismatch → CreateContainerConfigError (R-25/R-33, PR #89)
+
+**증상**: cluster up 후 모든 service pod `CreateContainerConfigError`:
+```
+$ kubectl describe pod api-gateway-... | grep -A 3 Events
+... MountVolume.SetUp failed for volume "...": secret "api-gateway-secrets" not found
+```
+
+ExternalSecret 은 정상 작동 (`SecretSynced=True`).
+
+**원인**: ExternalSecret 이 만든 secret 의 이름 (`auth-db-credentials` in databases ns,
+`auth-jwt-secret` in market-dev) 과 service Helm chart 가 envFrom 으로 참조하는
+이름 (`{svc}-secrets`, `{svc}-config` in market-{dev,prod}) 이 다름. R-35 매니페스트
+작성 시 ExternalSecret target.name 과 service Helm chart 의 envFrom 이 따로 따로
+작성됨.
+
+**해결**: PR #89 — service 별 ExternalSecret + ConfigMap 12 쌍 추가.
+- ExternalSecret `target.name={svc}-secrets` (service Helm 기대 이름)
+- `target.template.data` 로 ENV 이름 매핑 (`AUTH_DB_PASSWORD: "{{ .dbPassword }}"`)
+- ConfigMap `{svc}-config` — K8s service DNS (CNPG `{name}-rw`, Strimzi
+  `market-kafka-kafka-bootstrap`, Spotahome `rfr-{name}`)
+
+각 polyrepo 의 `application.yaml` 의 `${ENV:default}` 패턴 직접 추출 후 정확히 매핑.
+
+**재발 방지**:
+- service Helm chart 의 `envFrom` 참조 이름 = ExternalSecret `target.name` 일치 검증
+- ArgoCD sync 후 `kubectl describe pod` 의 events 가 `secret ... not found` 면 즉시 이
+  패턴 의심
+
+---
+
+### 7.11 ClusterSecretStore IRSA → IMDS 인증 변경 (self-managed kubeadm, PR #85)
+
+**증상** (cluster up 전 매니페스트 분석 단계 발견):
+```yaml
+spec:
+  provider:
+    aws:
+      auth:
+        jwt:
+          serviceAccountRef:        # EKS IRSA 패턴
+            name: external-secrets
+            namespace: external-secrets
+```
+
+매니페스트 주석은 "kubelet instance profile (R-29 와 동일 IRSA 패턴)" 이라고 정확히
+기술했으나 spec 은 IRSA — 모순.
+
+**원인**: IRSA (IAM Roles for Service Accounts) 는 EKS 의 OIDC provider 가 필요.
+self-managed kubeadm cluster 에는 OIDC provider 부재 → STS `AssumeRoleWithWebIdentity`
+호출 실패 → 모든 ExternalSecret sync 실패.
+
+**해결**: PR #85 — `spec.provider.aws.auth` 섹션 완전 제거. ESO operator pod 가
+AWS SDK default credential provider chain 으로 **IMDS → EC2 node IAM role** 자동
+사용 (R-29 ECR credential provider 와 동일 패턴).
+
+사전 조건: msa-provisioning iam.tf 에 `secretsmanager:GetSecretValue` 부착 (PR #12,
+R-25/R-33 의 짝).
+
+**재발 방지**:
+- 매니페스트 주석 vs spec 일관성 검증 — 코드 직접 읽기 (사용자 작업 원칙)
+- self-managed cluster 의 모든 AWS API 호출 컴포넌트 (ESO / EBS CSI / ALB controller
+  / etc) 는 IRSA 가 아닌 IMDS 패턴 사용
+- 첫 cluster up 전 ClusterSecretStore / 다른 IAM 사용 매니페스트 의 auth section 점검
 
 ---
 
