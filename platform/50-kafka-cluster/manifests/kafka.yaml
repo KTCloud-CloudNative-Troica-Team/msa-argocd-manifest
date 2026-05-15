@@ -1,7 +1,10 @@
 # Strimzi Kafka CR — KRaft 모드 (ZooKeeper 미사용, 2026 권장).
-# 3 broker (Multi-AZ 분산) + 내부 metrics + Prometheus ServiceMonitor.
+# 1 broker (PoC memory diet) + 내부 metrics + Prometheus ServiceMonitor.
 #
-# PoC 규모 — replicas 3, EBS gp3 20Gi × 3.
+# 메모리 압박 (worker t3.large × 3 = 24GB) 으로 PoC 단계 broker 1 개.
+# KRaft 의 단일 노드는 controller + broker dual-role 로 작동. 운영 단계는 3 broker
+# (다른 AZ 분산) + RF=3 + min.insync.replicas=2 로 환원 필요.
+# replication factor 도 같이 1 로 (1 broker 시 RF 3 = topic 생성 실패).
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
@@ -11,7 +14,7 @@ metadata:
   labels:
     strimzi.io/cluster: market-kafka
 spec:
-  replicas: 3
+  replicas: 1
   roles:
     - controller
     - broker
@@ -53,11 +56,13 @@ spec:
         authentication:
           type: tls
     config:
-      offsets.topic.replication.factor: 3
-      transaction.state.log.replication.factor: 3
-      transaction.state.log.min.isr: 2
-      default.replication.factor: 3
-      min.insync.replicas: 2
+      # 1 broker 시 RF=3 / min.isr=2 는 topic 생성 실패. 모두 1 로 다이어트.
+      # 운영 단계 환원 필수.
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
     # Prometheus JMX exporter — broker metrics scrape (kube-prometheus-stack 이 자동 발견)
     metricsConfig:
       type: jmxPrometheusExporter

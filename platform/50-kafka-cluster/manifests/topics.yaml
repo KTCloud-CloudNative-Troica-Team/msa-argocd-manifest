@@ -1,5 +1,9 @@
 # KafkaTopic CR × 4 — ADR-0004 표준 토픽명 (dot 구분, multi-word 는 hyphen).
 # 본 매니페스트가 적용되면 Strimzi entity-operator 가 Kafka 클러스터에 실 토픽 생성.
+#
+# PoC memory diet: broker 1 개 (kafka.yaml) 에 맞춰 replicas 도 1, min.insync.replicas 도 1.
+# 운영 단계 환원 시 replicas 3 + min.isr 2 로 복귀.
+# partitions 3 은 유지 — broker 1 대 라도 partition 은 정상 분산 (단일 broker 가 3 partition 보유).
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
@@ -10,10 +14,10 @@ metadata:
     strimzi.io/cluster: market-kafka
 spec:
   partitions: 3
-  replicas: 3
+  replicas: 1
   config:
     retention.ms: 604800000        # 7d
-    min.insync.replicas: 2
+    min.insync.replicas: 1
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
@@ -24,10 +28,10 @@ metadata:
     strimzi.io/cluster: market-kafka
 spec:
   partitions: 3
-  replicas: 3
+  replicas: 1
   config:
     retention.ms: 604800000
-    min.insync.replicas: 2
+    min.insync.replicas: 1
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
@@ -38,11 +42,11 @@ metadata:
     strimzi.io/cluster: market-kafka
 spec:
   partitions: 3
-  replicas: 3
+  replicas: 1
   config:
     # terminal 이벤트 — 추후 분석 용도로 더 길게 유지 (30d)
     retention.ms: 2592000000
-    min.insync.replicas: 2
+    min.insync.replicas: 1
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
@@ -53,7 +57,7 @@ metadata:
     strimzi.io/cluster: market-kafka
 spec:
   partitions: 3
-  replicas: 3
+  replicas: 1
   config:
     retention.ms: 2592000000
-    min.insync.replicas: 2
+    min.insync.replicas: 1

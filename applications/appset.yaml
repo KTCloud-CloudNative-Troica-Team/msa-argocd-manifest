@@ -19,7 +19,10 @@ spec:
           - list:
               elements:
                 - env: dev
-                - env: prod
+                # PoC memory diet — prod 환경 일시 비활성. 6 service × 2 env = 12
+                # Application → 6 (dev only). 평가 demo 는 market-dev 만 사용.
+                # 운영 단계 진입 시 prod 환경 환원 + 별도 prod 전용 cluster 분리 검토.
+                # - env: prod
   template:
     metadata:
       name: '{{.path.basename}}-{{.env}}'
