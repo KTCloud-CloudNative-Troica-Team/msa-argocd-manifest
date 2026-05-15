@@ -17,7 +17,11 @@ spec:
   source:
     chart: redis-operator
     repoURL: https://spotahome.github.io/redis-operator
-    targetRevision: 3.2.13
+    # Spotahome publish 된 version 직접 확인 (helm search repo --versions):
+    # 3.3.0 (latest, app 1.3.0) / 3.2.9 / 3.2.8 / 3.2.7 / ...
+    # 3.2.13 은 publish 되지 않은 version 이라 chart pull 실패.
+    # 3.3.0 (latest stable) 사용.
+    targetRevision: 3.3.0
     helm:
       releaseName: redis-operator
       values: |
