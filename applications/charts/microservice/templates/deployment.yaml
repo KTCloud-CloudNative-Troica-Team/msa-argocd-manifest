@@ -6,6 +6,17 @@ metadata:
     {{- include "microservice.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  # R-44 (B) 사전: rolling update 시 zero-downtime 보장.
+  # K8s default = maxSurge 25% / maxUnavailable 25%. replicas=1 일 때 25% 가
+  # round down 시 0 / 0 → K8s 가 한쪽을 1 로 보정. 명시적 hardcode 가 더 안전.
+  # maxSurge=1: 새 pod 1 개 추가 (replica + 1 → replica).
+  # maxUnavailable=0: 옛 pod 종료 시 모든 옛 pod 가 still ready → downtime 0.
+  # 결과: 항상 ≥ replicaCount 개 pod available 상태로 rollout.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "microservice.selectorLabels" . | nindent 6 }}
