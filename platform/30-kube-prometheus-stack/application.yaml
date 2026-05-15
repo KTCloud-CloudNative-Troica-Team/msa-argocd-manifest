@@ -31,12 +31,15 @@ spec:
         prometheus:
           prometheusSpec:
             retention: 7d
+            # PoC memory diet — worker t3.large × 3 = 24GB 에서 다른 stateful
+            # workload (CNPG / Kafka / Redis) 와 공존. retention 7d 유지하되
+            # head memory 의 working set 크기로 limit 결정.
             resources:
               requests:
                 cpu: 200m
-                memory: 1Gi
+                memory: 512Mi
               limits:
-                memory: 2Gi
+                memory: 1Gi
             # 모든 namespace 의 ServiceMonitor / PodMonitor 자동 발견
             serviceMonitorSelectorNilUsesHelmValues: false
             podMonitorSelectorNilUsesHelmValues: false

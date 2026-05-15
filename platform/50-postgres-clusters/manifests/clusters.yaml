@@ -1,13 +1,14 @@
 # CNPG Cluster CR × 6 — 서비스별 독립 Postgres (Database per Service).
 #
 # 각 Cluster 는:
-#   - instances: 2 (primary + replica, PoC 규모)
+#   - instances: 1 (primary only, PoC memory diet)
 #   - storage: 10Gi EBS gp3
 #   - bootstrap.initdb: 초기 DB 이름 / 사용자 — credentials 는 ExternalSecret 으로
 #     주입 (platform/91-external-secrets-config/)
 #
-# PoC 규모라 단일 DB instance + replica 1. 운영 단계는 instances=3 + read replica
-# 별도 검토.
+# 메모리 압박 (worker t3.large × 3 = 24GB) 으로 PoC 단계 replica 제거.
+# 6 Cluster × 2 → 1 instance = 6 pod 절감. HA 검증은 평가 항목 아님.
+# 운영 단계 instances=3 + read replica 별도 검토.
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -15,7 +16,7 @@ metadata:
   name: auth-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: auth
@@ -39,7 +40,7 @@ metadata:
   name: user-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: user
@@ -63,7 +64,7 @@ metadata:
   name: product-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: product
@@ -87,7 +88,7 @@ metadata:
   name: order-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: order
@@ -111,7 +112,7 @@ metadata:
   name: inventory-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: inventory
@@ -137,7 +138,7 @@ metadata:
   name: ops-db
   namespace: databases
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: ops
