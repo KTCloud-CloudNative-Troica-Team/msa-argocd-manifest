@@ -30,6 +30,12 @@ data:
   # Reactive Redis client 가 이걸 사용.
   REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
   REDIS_PORT: "6379"
+  # Spring Boot main: Web (Servlet) + WebFlux (Reactive) Security 의 같은 bean 이름
+  # 중복 (WebSecurityConfiguration vs WebFluxSecurityConfiguration 의 conversionServicePostProcessor)
+  # → APPLICATION FAILED TO START. msa-api-gateway 의 build.gradle.kts 에서 spring-boot-starter-web
+  # 또는 spring-boot-starter-security (Servlet) 제거가 정식 fix. 그 PR 머지 + image rebuild
+  # 까지의 임시방편으로 override 허용.
+  SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
   # SC Gateway routes 의 backend URI
   ROUTE_USER_SERVICE_URI: "http://user-service.market-dev.svc.cluster.local:8004"
   ROUTE_ORDER_SERVICE_URI: "http://order-service.market-dev.svc.cluster.local:8002"
@@ -57,6 +63,7 @@ metadata:
 data:
   REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
   REDIS_PORT: "6379"
+  SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
   ROUTE_USER_SERVICE_URI: "http://user-service.market-prod.svc.cluster.local:8004"
   ROUTE_ORDER_SERVICE_URI: "http://order-service.market-prod.svc.cluster.local:8002"
   GRPC_PRODUCT_SERVICE_ADDR: "static://product-service.market-prod.svc.cluster.local:9001"
