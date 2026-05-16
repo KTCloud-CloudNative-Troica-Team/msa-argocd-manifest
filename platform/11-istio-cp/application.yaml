@@ -63,6 +63,12 @@ spec:
         # skip 필요. (helm 3.13+ 의 --skip-schema-validation 와 동일)
         skipSchemaValidation: true
         values: |
+          # chart default = `image: auto` (sidecar inject webhook 가 실 image 로 mutate
+          # 하는 placeholder). 단 istio-system namespace 에는 `istio-injection=enabled`
+          # label 없음 (istiod 가 자기 자신 inject 회피) → ingressgateway pod 가 `auto`
+          # 그대로 pull 시도 → `docker.io/library/auto:latest` ErrImagePull.
+          # 해결: image 직접 명시.
+          image: docker.io/istio/proxyv2:1.23.3
           # 외부 진입점 — NLB target. PoC 단계 NodePort 30080/30443.
           service:
             type: NodePort
