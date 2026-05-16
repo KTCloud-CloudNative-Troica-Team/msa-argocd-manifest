@@ -243,3 +243,85 @@ R-01, R-02, R-06, R-07, R-10, R-11, R-14, R-17.
 - 발표 임팩트 ROI: R-52 (Rollouts, ArgoCD 이미 있음) → R-51 (KEDA) → R-53 (OPA) → 나머지
 
 *Last updated: 2026-05-14 PM, R-35 매니페스트 PR 푸시 시점.*
+
+---
+
+## 2026-05-17 스냅샷 — Cluster up + 평가 검증 진행 (필수 18 항목)
+
+### Cluster 안정화 누적 fix (msa-argocd-manifest / msa-provisioning / msa-common-libs / msa-api-gateway)
+
+| PR | repo | 내용 | 상태 |
+|---|---|---|---|
+| #17 | msa-provisioning | worker root volume 8GB → 50GB | ✅ 머지 |
+| #18 | msa-provisioning | AWS LB Controller 제거 (webhook timeout fix) | ✅ 머지 |
+| #19 | msa-provisioning | ArgoCD http NodePort 30090 (Istio 30080 양보) | ✅ 머지 |
+| #20 | msa-provisioning | ArgoCD https NodePort 30493 (Istio 30443 양보) | ✅ 머지 |
+| #102 | msa-argocd-manifest | manifest diet — CNPG instances 1, Kafka broker 1, Redis sentinel/redis 1, market-prod env 비활성 | ✅ 머지 |
+| #103 | msa-argocd-manifest | service memory 1Gi + startupProbe (Spring Boot startup 35s + Redis/Kafka init cover) | ✅ 머지 |
+| #105 | msa-argocd-manifest | Spotahome redis-operator 제거 → 단순 K8s Deployment+Service (chart manifest gen error 회피) | ✅ 머지 |
+| #107 | msa-argocd-manifest | Redis `--requirepass` + service Secret REDIS_PASSWORD 동기화 | ✅ 머지 |
+| #109 | msa-argocd-manifest | api-gateway SPRING_MAIN_* 임시 우회 ENV revert (정식 fix 적용 후) | ✅ 머지 |
+| #111 | msa-argocd-manifest | istio-system namespace 의 `istio-injection: enabled` label (gateway image `auto` mutation 활성화) | ✅ 머지 |
+| msa-common-libs #8 + v0.4.0 | msa-common-libs | `spring-boot-starter-web` → `spring-web` (servlet 제거, reactive consumer 호환) | ✅ 머지 |
+| msa-api-gateway #11 | msa-api-gateway | common-libs 0.3.1 → 0.4.0 (SCG classpath 충돌 해소) | ✅ 머지 |
+| msa-api-gateway #12 | msa-api-gateway | `io.grpc:grpc-netty` (non-shaded) 추가 — SCG GrpcSslConfigurer 호환 | ✅ 머지 |
+| msa-api-gateway #13 | msa-api-gateway | `spring.data.redis.password: ${REDIS_PASSWORD:}` placeholder 추가 (Lettuce AUTH 활성화) | ✅ 머지 |
+| #114 | msa-argocd-manifest | AlertManager `secrets:` 들여쓰기 fix (alertmanagerSpec 자식으로) — Slack webhook mount | 🔄 머지 + reconcile 대기 |
+
+### 평가요소 cover 현황 (필수 18 + 선택)
+
+#### 검증 완료 ✅
+| R | 평가 매핑 | demo 결과 |
+|---|---|---|
+| **R-03 (B)** | 심화 (1)-1 Service Mesh | Istio CP 2 pod + sidecar 8 pod 모두 inject + PeerAuthentication mesh STRICT + service PERMISSIVE override + Gateway/VirtualService + 3 ns inject label |
+| **R-25** | 기본 (2)-2/3 Configuration (Secret) | ESO 3 pod + ClusterSecretStore Valid + **20 ExternalSecret 모두 SecretSynced=True** + K8s Secret 자동 생성 + envFrom secretRef |
+| **R-33** | 기본 (2)-2/3 Configuration (ConfigMap) | 12 ConfigMap (6 service × 2 env) + pod 실 ENV 매핑 정상 + Service DNS 정합 (`auth-db-rw.databases.svc...`, `rfr-*-redis.redis.svc...`) |
+| **R-35** | 기본 (3)/(4)/(5) Resource/Storage/Networking | platform 19 Application 모두 Healthy + CNPG 6 + Kafka KRaft 1 broker + 4 KafkaTopic + Redis 2 + cert-manager 3 + monitoring stack + observability + EBS CSI + 11 PVC Bound |
+| **R-43** | 심화 (1)-3 PDB | 8 PDB (market-dev) + 6 CNPG PDB + istiod + kafka PDB. service `minAvailable=1` (Allowed disruptions=0), worker `maxUnavailable=1` |
+| **R-44 (B)** | 심화 (1)-1 독립 배포 | product-service rolling restart 30s 동안 다른 4 service traffic 100% 정상 (5-20ms 응답), endpoint pod IP 변화 없음 |
+| **R-46** | 심화 (2)-2 Trivy | `trivy-manifest-scan.yml` 모든 push/PR 자동 success + Code scanning alerts severity 분포 (error 6 / warning 33 / note 29, fixed 3 high) → DevSecOps shift-left |
+| **R-48** | 심화 (3)-1/2 RBAC | 3 ClusterRole/Role + 4 binding + ServiceAccount × 7. Allow/Deny matrix 12 명령 모두 기대대로 (developer read-only / operator namespace 한정 / sre cluster-admin) |
+
+#### 진행 중 🔄
+| R | 평가 매핑 | 현재 상태 |
+|---|---|---|
+| **R-47** | 심화 (2)-3 Slack 보안 채널 | PR #114 머지 + ArgoCD reconcile + AlertManager pod 재생성 + manual fire 재시도 대기. **#alerts** 와 **#security-report** Slack 채널 + Troica AlertManager 앱 추가 완료 (사용자). |
+
+#### 미검증 ⏸
+| R | 평가 매핑 | blocker / 다음 작업 |
+|---|---|---|
+| **R-42** Part 1 | 기본 (3)-2 Postman E2E (필수) | Newman pod image pull timeout (60s). long-running pod + timeout 5 분 패턴으로 재시도 |
+| **R-42** Part 2 | 기본 (3)-3 Prometheus + Grafana (필수) | Prometheus targets active 확인 완료. Grafana UI 진입 + dashboard panel (4 패널) 실 데이터 확인 |
+| **R-45** | 심화 (2)-1 SonarQube/SonarCloud | SonarCloud Dashboard 확인 (CI 의 sonar task 결과). 단순 UI 확인. |
+| **R-49** | 심화 (3)-3 NetworkPolicy | sidecar inject race fix (R-44 의 monitoring ns probe pod 패턴) 으로 ALLOW/DENY matrix 시연 |
+| **R-57** | 기본 (3)-1 단위 테스트 | 이미 머지됨 (msa-spring-boot 시기). CI 통과 history 확인만 |
+
+#### 선택 (Phase 6 또는 시간 여유)
+- R-41 Circuit Breaker (기본 (2)-4 선택) — Resilience4j 매니페스트 머지됨, demo 진행 안 함
+- R-50 Rate Limit (기본 (2)-5 선택) — runbook 있음, Redis 정상 작동 검증된 상태
+- R-42 Part 4 Newman CI / Part 5 Kafka lag panel (기본 (3)-5/6 선택)
+
+### 평가 18 cover 진행도
+
+```
+✅ 검증완료 8 / 🔄 진행중 1 / ⏸ 미검증 5
+   = 8/14 (57%) 완료
+```
+
+**14 = 필수 18 중 별도 demo 검증 필요한 항목**. 나머지 4 (기본 (1)/(4)/(5)/(6)/(7)/(8)/(9)) 는 매니페스트/cluster 상태 자체로 cover (별도 demo X).
+
+### 다음 작업 — 단순한 것부터
+
+1. **R-47** PR #114 머지 후 검증 (Slack 메시지 수신 확인)
+2. **R-49** NetworkPolicy ALLOW/DENY matrix (monitoring ns probe pod 패턴, ~10 분)
+3. **R-45** SonarCloud Dashboard 확인 (~3 분)
+4. **R-57** msa-* CI 의 unit test 통과 history 확인 (~3 분)
+5. **R-42 Part 2** Grafana UI 진입 + dashboard panel 확인 (~10 분)
+6. **R-42 Part 1** Newman E2E (long-running pod 패턴, ~10 분)
+
+### 잔여 개선 사항 (선택)
+
+- istio-base / istio-cp / platform-root / root-app / strimzi-operator / tempo 의 OutOfSync — cosmetic diff (K8s API server normalize, webhook self-managed). 기능 영향 0. ArgoCD `ignoreDifferences` 적용 시 깨끗.
+- ansible 의 PR #19 + #20 변경이 cluster 의 helm release 와 drift. 다음 cluster 재배포 시 자동 해소.
+
+*Last updated: 2026-05-17, 평가 검증 진행 중 (8/14 통과 + R-47 PR #114 대기).*
