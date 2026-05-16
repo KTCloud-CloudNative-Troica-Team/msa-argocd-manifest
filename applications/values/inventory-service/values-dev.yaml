@@ -7,8 +7,8 @@ resources:
     cpu: 100m
     memory: 256Mi
   limits:
-    cpu: 300m
-    memory: 512Mi
+    cpu: 500m
+    memory: 1Gi
 # Q7 Spring Batch worker
 worker:
   enabled: true
