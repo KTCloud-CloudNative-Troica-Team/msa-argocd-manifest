@@ -65,6 +65,12 @@ spec:
                 memory: 128Mi
               limits:
                 memory: 256Mi
+            # prometheus-operator 의 AlertManager CR 의 spec.secrets[] 매핑.
+            # pod 의 /etc/alertmanager/secrets/<secret-name>/<key-name> 에 mount.
+            # 이전 위치 (alertmanager.secrets — alertmanagerSpec 외부) 는 chart 가 무시.
+            # AlertManager pod 에 secret 안 마운트 → api_url_file path 없음 → Slack POST 못 함.
+            secrets:
+              - alertmanager-slack-webhooks
           config:
             global:
               resolve_timeout: 5m
@@ -99,12 +105,6 @@ spec:
                     send_resolved: true
                     title: ':rotating_light: {{ .CommonLabels.alertname }}'
                     text: '{{ template "slack.default.text" . }}'
-          # Slack webhook URL Secret 을 mount
-          # (Secret 자체는 ExternalSecret 으로 AWS Secrets Manager 에서 동기화 — R-33)
-          # 마운트 결과 경로: /etc/alertmanager/secrets/alertmanager-slack-webhooks/{slack-default-url, slack-security-url}
-          secrets:
-            - alertmanager-slack-webhooks
-
         # ===== Grafana =====
         grafana:
           adminPassword: "" # ExternalSecret 으로 grafana-admin-password Secret 에서 주입
