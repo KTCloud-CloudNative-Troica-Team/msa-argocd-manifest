@@ -21,8 +21,11 @@ spec:
     - https://charts.jetstack.io
     - https://istio-release.storage.googleapis.com/charts
     # R-35 platform 매니페스트 추가 시 누락됐던 외부 chart repo 들.
-    # platform/40-redis-operator → Spotahome (ot-container-kit 가 아님)
-    - https://spotahome.github.io/redis-operator
+    # Spotahome redis-operator 제거: chart 3.3.0 의 helm template 가 ArgoCD repo-server
+    # 의 manifest 생성 시 stale cache 에러. PoC 다이어트 후 HA 검증 안 함 → operator
+    # 의미 사라짐. 단순 K8s Deployment+Service 로 교체
+    # (platform/50-redis-cluster/manifests/redis-deployments.yaml).
+    # - https://spotahome.github.io/redis-operator
     # platform/40-external-secrets-operator
     - https://charts.external-secrets.io
     # platform/05-ebs-csi (R-35 보완, self-managed kubeadm 용 EBS CSI)
