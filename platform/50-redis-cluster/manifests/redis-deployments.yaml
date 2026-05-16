@@ -1,0 +1,131 @@
+# Redis × 2 — auth-redis (auth-service refresh-token / blacklist) + inventory-redis
+# (inventory-service stock cache + R-50 SC Gateway Rate Limit Token Bucket).
+#
+# 이전 (Spotahome RedisFailover operator):
+#   - operator chart 3.3.0 의 helm template 결과가 ArgoCD repo-server 의 manifest
+#     생성 시 "yaml: line 4: did not find expected node content" 에러 발생.
+#     cached error 가 hard refresh / application delete / repo-server restart 다
+#     해도 재발 → chart 자체 또는 publish 패턴이 ArgoCD 와 호환 X.
+#   - 다른 chart version 시도 가능하나 동일 issue 위험 + Spotahome 가 maintained 미흡.
+# 본 매니페스트 (단순 K8s):
+#   - PoC 다이어트 후 sentinel.replicas=1, redis.replicas=1 → HA 검증 X. operator
+#     필요성 사라짐. 평가 18 항목 중 Redis HA / failover 검증 항목 없음.
+#   - 단순 Deployment + Service 로 충분. emptyDir (data persistence 평가 항목 아님).
+#
+# Service 이름 = `rfr-{auth,inventory}-redis` (이전 Spotahome 의 RedisFailover service
+# 이름 패턴 유지) → ConfigMap (platform/91-external-secrets-config/) 의 REDIS_HOST 와
+# label (app=redis, redisfailover_name=*) 모두 호환. 다른 매니페스트 영향 0.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-redis
+  namespace: redis
+  labels:
+    app: redis
+    redisfailover_name: auth-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      redisfailover_name: auth-redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        redisfailover_name: auth-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rfr-auth-redis  # ConfigMap 의 REDIS_HOST 호환
+  namespace: redis
+spec:
+  selector:
+    app: redis
+    redisfailover_name: auth-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-redis
+  namespace: redis
+  labels:
+    app: redis
+    redisfailover_name: inventory-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      redisfailover_name: inventory-redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        redisfailover_name: inventory-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rfr-inventory-redis  # ConfigMap 의 REDIS_HOST 호환 + R-50 demo runbook 호환
+  namespace: redis
+spec:
+  selector:
+    app: redis
+    redisfailover_name: inventory-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379

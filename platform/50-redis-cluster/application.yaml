@@ -1,7 +1,9 @@
-# R-35 (b): Redis Failover CR × 2 — auth refresh-token / inventory stock cache.
-# Sync Wave 2: Redis Operator (Sync Wave 1) 후.
+# R-35 (b): Redis × 2 (auth-redis + inventory-redis) — auth refresh-token / inventory
+# stock cache + R-50 SC Gateway Rate Limit Token Bucket.
 #
-# PoC 규모 — Sentinel 3 + Redis master 1 + replica 1 per instance.
+# 이전 Spotahome RedisFailover operator → 단순 K8s Deployment+Service 로 교체
+# (manifests/redis-deployments.yaml). 사유는 매니페스트 자체 헤더 코멘트 참조.
+# Sync Wave 도 더 이상 operator 의존 X. PoC: Wave 2 유지 (CNPG/Kafka 와 같은 wave).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
