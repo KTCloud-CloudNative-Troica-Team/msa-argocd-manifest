@@ -18,7 +18,7 @@ type: Opaque
 stringData:
   # Spotahome Redis auth 미설정. application.yml 의 default 가 password 미설정
   # 이라 빈 ENV 로 충분.
-  REDIS_PASSWORD: ""
+  REDIS_PASSWORD: "troica-redis-poc-pw-dev"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -53,7 +53,7 @@ metadata:
   namespace: market-prod
 type: Opaque
 stringData:
-  REDIS_PASSWORD: ""
+  REDIS_PASSWORD: "troica-redis-poc-pw-dev"
 ---
 apiVersion: v1
 kind: ConfigMap

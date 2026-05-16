@@ -49,6 +49,20 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          # Redis 에 password 설정 (--requirepass). client 매니페스트
+          # (platform/91-external-secrets-config/) 의 REDIS_PASSWORD 환경변수와 일치.
+          # Redisson 이 spring.data.redis.password=${REDIS_PASSWORD} 받으면 AUTH 보내는데
+          # 서버가 password 미설정 이면 "AUTH called without any password configured" 거부.
+          # 운영 표준: server + client 양쪽 일치.
+          args:
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -63,6 +77,7 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+          # password 설정 후 tcpSocket probe 는 그대로 작동 (TCP handshake 만 검증)
           readinessProbe:
             tcpSocket:
               port: 6379
@@ -126,6 +141,20 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          # Redis 에 password 설정 (--requirepass). client 매니페스트
+          # (platform/91-external-secrets-config/) 의 REDIS_PASSWORD 환경변수와 일치.
+          # Redisson 이 spring.data.redis.password=${REDIS_PASSWORD} 받으면 AUTH 보내는데
+          # 서버가 password 미설정 이면 "AUTH called without any password configured" 거부.
+          # 운영 표준: server + client 양쪽 일치.
+          args:
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -140,6 +169,7 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+          # password 설정 후 tcpSocket probe 는 그대로 작동 (TCP handshake 만 검증)
           readinessProbe:
             tcpSocket:
               port: 6379
@@ -174,3 +204,17 @@ spec:
     - name: redis
       port: 6379
       targetPort: 6379
+---
+# Redis password — auth-redis + inventory-redis 공유 (단일 cluster 내 단일 password).
+# PoC 단계 평문. 운영 단계: AWS Secrets Manager + ExternalSecret 으로 이관 (R-25 패턴).
+# client 매니페스트 (platform/91-external-secrets-config/app-bindings-*.yaml) 의
+# REDIS_PASSWORD 값과 정확히 일치해야 AUTH 성공.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-auth
+  namespace: redis
+type: Opaque
+stringData:
+  password: "troica-redis-poc-pw-dev"
+
