@@ -266,7 +266,7 @@ R-01, R-02, R-06, R-07, R-10, R-11, R-14, R-17.
 | msa-api-gateway #11 | msa-api-gateway | common-libs 0.3.1 → 0.4.0 (SCG classpath 충돌 해소) | ✅ 머지 |
 | msa-api-gateway #12 | msa-api-gateway | `io.grpc:grpc-netty` (non-shaded) 추가 — SCG GrpcSslConfigurer 호환 | ✅ 머지 |
 | msa-api-gateway #13 | msa-api-gateway | `spring.data.redis.password: ${REDIS_PASSWORD:}` placeholder 추가 (Lettuce AUTH 활성화) | ✅ 머지 |
-| #114 | msa-argocd-manifest | AlertManager `secrets:` 들여쓰기 fix (alertmanagerSpec 자식으로) — Slack webhook mount | 🔄 머지 + reconcile 대기 |
+| #114 | msa-argocd-manifest | AlertManager `secrets:` 들여쓰기 fix (alertmanagerSpec 자식으로) — Slack webhook mount | ✅ 머지 + reconcile 완료 (R-47 검증 통과) |
 
 ### 평가요소 cover 현황 (필수 18 + 선택)
 
@@ -281,20 +281,16 @@ R-01, R-02, R-06, R-07, R-10, R-11, R-14, R-17.
 | **R-44 (B)** | 심화 (1)-1 독립 배포 | product-service rolling restart 30s 동안 다른 4 service traffic 100% 정상 (5-20ms 응답), endpoint pod IP 변화 없음 |
 | **R-46** | 심화 (2)-2 Trivy | `trivy-manifest-scan.yml` 모든 push/PR 자동 success + Code scanning alerts severity 분포 (error 6 / warning 33 / note 29, fixed 3 high) → DevSecOps shift-left |
 | **R-48** | 심화 (3)-1/2 RBAC | 3 ClusterRole/Role + 4 binding + ServiceAccount × 7. Allow/Deny matrix 12 명령 모두 기대대로 (developer read-only / operator namespace 한정 / sre cluster-admin) |
-
-#### 진행 중 🔄
-| R | 평가 매핑 | 현재 상태 |
-|---|---|---|
-| **R-47** | 심화 (2)-3 Slack 보안 채널 | PR #114 머지 + ArgoCD reconcile + AlertManager pod 재생성 + manual fire 재시도 대기. **#alerts** 와 **#security-report** Slack 채널 + Troica AlertManager 앱 추가 완료 (사용자). |
+| **R-45** | 심화 (2)-1 SonarCloud 정적 분석 | 7 polyrepo project 모두 SonarCloud 등록. msa-api-gateway 분석 결과 = bugs 0 / reliability A / sqale A / coverage 12.9% / code_smells 22 / vulnerabilities 1 / ncloc 897. 3 회 누적 analysis history. 6 service ERROR = ADR-0011 의 의도 (무료 plan default Coverage 80% gate) |
+| **R-47** | 심화 (2)-3 Slack 보안 채널 | PR #114 들여쓰기 fix 후 AlertManager pod 재생성 → `/etc/alertmanager/secrets/alertmanager-slack-webhooks/` 에 2 파일 mount. manual fire → **#alerts** 채널 `ManualWarningTest` + **#security-report** 채널 `ManualSecurityTest` 도착 (사진 증거). ADR-0010 채널 분리 실 작동 |
+| **R-49** | 심화 (3)-3 NetworkPolicy | ALLOW (`api-gateway label → auth-service:9005` = 0.71s + status 415) + DENY 1 (`product-service label → auth-service:9005` = 5s timeout) + DENY 2 (`api-gateway label → user-service:8100` = 5s timeout). label-level + port-level 분리 시연 |
+| **R-57** | 기본 (3)-1 단위 테스트 | 7 polyrepo CI 의 최근 5 run 모두 `success` (msa-product-service 의 1 commit 만 failure → 다음 commit fix). cluster image tag = `main-<sha7>` = CI 의 unit test → build → ECR push → manifest auto-update 모두 성공한 commit. msa-common-libs v0.1.0~v0.4.0 5 tag publish |
 
 #### 미검증 ⏸
 | R | 평가 매핑 | blocker / 다음 작업 |
 |---|---|---|
-| **R-42** Part 1 | 기본 (3)-2 Postman E2E (필수) | Newman pod image pull timeout (60s). long-running pod + timeout 5 분 패턴으로 재시도 |
-| **R-42** Part 2 | 기본 (3)-3 Prometheus + Grafana (필수) | Prometheus targets active 확인 완료. Grafana UI 진입 + dashboard panel (4 패널) 실 데이터 확인 |
-| **R-45** | 심화 (2)-1 SonarQube/SonarCloud | SonarCloud Dashboard 확인 (CI 의 sonar task 결과). 단순 UI 확인. |
-| **R-49** | 심화 (3)-3 NetworkPolicy | sidecar inject race fix (R-44 의 monitoring ns probe pod 패턴) 으로 ALLOW/DENY matrix 시연 |
-| **R-57** | 기본 (3)-1 단위 테스트 | 이미 머지됨 (msa-spring-boot 시기). CI 통과 history 확인만 |
+| **R-42** Part 1 | 기본 (3)-2 Postman E2E (필수) | long-running Newman pod (image pull 5 분 wait) + R-49 의 성공 패턴 (`-c <container-name>` exec) 으로 재시도 예정. cluster 재배포 후 |
+| **R-42** Part 2 | 기본 (3)-3 Prometheus + Grafana (필수) | Prometheus active targets 확인 완료 (envoy + cnpg + node-exporter + etc 정상 scrape). 남은 작업 = Grafana UI 진입 + 4 panel 실 데이터 시각 확인. cluster 재배포 후 |
 
 #### 선택 (Phase 6 또는 시간 여유)
 - R-41 Circuit Breaker (기본 (2)-4 선택) — Resilience4j 매니페스트 머지됨, demo 진행 안 함
@@ -304,24 +300,50 @@ R-01, R-02, R-06, R-07, R-10, R-11, R-14, R-17.
 ### 평가 18 cover 진행도
 
 ```
-✅ 검증완료 8 / 🔄 진행중 1 / ⏸ 미검증 5
-   = 8/14 (57%) 완료
+✅ 검증완료 12 / ⏸ 미검증 2  =  12/14 (86%) 완료
 ```
 
 **14 = 필수 18 중 별도 demo 검증 필요한 항목**. 나머지 4 (기본 (1)/(4)/(5)/(6)/(7)/(8)/(9)) 는 매니페스트/cluster 상태 자체로 cover (별도 demo X).
 
-### 다음 작업 — 단순한 것부터
+| 평가요소 | R | 상태 |
+|---|---|---|
+| 기본 (2) Configuration (Secret) | R-25 | ✅ |
+| 기본 (2) Configuration (ConfigMap) | R-33 | ✅ |
+| 기본 (3)-1 단위 테스트 | R-57 | ✅ |
+| 기본 (3)-2 e2e (Postman) | R-42 Part 1 | ⏸ |
+| 기본 (3)-3 Prometheus + Grafana | R-42 Part 2 | ⏸ |
+| 기본 (3)/(4)/(5) Resource/Storage/Networking | R-35 | ✅ |
+| 심화 (1)-1 Service Mesh | R-03/R-44 | ✅ |
+| 심화 (1)-3 PDB | R-43 | ✅ |
+| 심화 (2)-1 SonarCloud | R-45 | ✅ |
+| 심화 (2)-2 Trivy | R-46 | ✅ |
+| 심화 (2)-3 Slack 보안 | R-47 | ✅ |
+| 심화 (3)-1/2 RBAC | R-48 | ✅ |
+| 심화 (3)-3 NetworkPolicy | R-49 | ✅ |
 
-1. **R-47** PR #114 머지 후 검증 (Slack 메시지 수신 확인)
-2. **R-49** NetworkPolicy ALLOW/DENY matrix (monitoring ns probe pod 패턴, ~10 분)
-3. **R-45** SonarCloud Dashboard 확인 (~3 분)
-4. **R-57** msa-* CI 의 unit test 통과 history 확인 (~3 분)
-5. **R-42 Part 2** Grafana UI 진입 + dashboard panel 확인 (~10 분)
-6. **R-42 Part 1** Newman E2E (long-running pod 패턴, ~10 분)
+### 다음 cluster 재배포 후 — R-42 만 남음
 
-### 잔여 개선 사항 (선택)
+destroy + apply 후 (현재 사용자 destroy 진행 중) 같은 manifest 로 cluster 재구축.
+재배포 시 자동 적용 — 모든 fix 가 git main 에 머지됨 (cluster 재배포 시 ansible + ArgoCD 가 자동 reconcile).
+
+1. **R-42 Part 1** Newman E2E (long-running pod 패턴, ~10-15 분)
+   - 사전: 6 service pod 2/2 Running + istio-ingressgateway Running
+   - `kubectl run newman --image=postman/newman:6.2.1 --command -- sleep 1800`
+   - `kubectl wait --timeout=300s` (image pull 5 분)
+   - `kubectl exec newman -c newman -- newman run <postman collection URL> --env-var baseUrl=...`
+
+2. **R-42 Part 2** Grafana UI (~10 분)
+   - port-forward + SSH tunnel → http://localhost:3000
+   - admin / `kubectl get secret grafana-admin -o ... | base64 -d`
+   - Explore PromQL or 4 panel 시각 확인
+
+### 잔여 개선 사항 (선택, 평가 영향 X)
 
 - istio-base / istio-cp / platform-root / root-app / strimzi-operator / tempo 의 OutOfSync — cosmetic diff (K8s API server normalize, webhook self-managed). 기능 영향 0. ArgoCD `ignoreDifferences` 적용 시 깨끗.
-- ansible 의 PR #19 + #20 변경이 cluster 의 helm release 와 drift. 다음 cluster 재배포 시 자동 해소.
+- ansible 의 PR #19 + #20 변경이 cluster 의 helm release 와 drift. **다음 cluster 재배포 시 자동 해소** (사용자 진행 중).
 
-*Last updated: 2026-05-17, 평가 검증 진행 중 (8/14 통과 + R-47 PR #114 대기).*
+### 발표 자료 (P6.1) 준비 — 평가 18 demo 정리
+
+12 ✅ + R-42 (2) ⏸ = **86% cover 완료**. 대부분 항목 발표 demo 가능 상태. 남은 R-42 는 cluster 재배포 후 검증 완료 시 14/14 (100%) 달성.
+
+*Last updated: 2026-05-17, R-42 외 모두 통과 (12/14 = 86%). 사용자 cluster destroy 진행 중.*
