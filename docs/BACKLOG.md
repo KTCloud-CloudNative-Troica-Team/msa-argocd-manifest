@@ -138,7 +138,7 @@
 | R-22 | inventory Event Sourcing + Spring Batch | ✅ | 기본 (1)-5 (선택) + (ADR-0007) | P4.3 동일 |
 | R-23 | api-gateway BFF + SC Gateway 라우팅 매트릭스 | ✅ | (ADR-0005) | application.yaml |
 | R-24 | identification 모듈 폐기 영향 정리 | ✅ | — | 의존 흔적 제거 확인 |
-| R-25 | auth-service JWT secret placeholder fallback (1차 fix) | 🔄 | 심화 (3)-2 (필수) 일부 | `fix/r-25-jwt-secret-placeholder`. Phase 5 ExternalSecrets 정식 해결 |
+| R-25 | auth-service JWT secret placeholder fallback (1차 fix) | ✅ | 심화 (3)-2 (필수) 일부 | `fix/r-25-jwt-secret-placeholder` (Phase 1 임시 fix). **Phase 5 ExternalSecrets 정식 fix 완료** — `troica/auth/jwt-secret` Secrets Manager → ExternalSecret `auth-jwt-secret` → K8s Secret → auth-service / api-gateway 의 `JWT_SECRET` ENV 주입 (R-25 B 검증 시점 통과 2026-05-17) |
 | R-39 | msa-frontend 신규 레포 (팀장님 작성) | ✅ | (필수) 프론트 | React 19.2 + Vite 8 + TS 6 + TanStack/MUI/Tailwind/Zustand. 10번째 polyrepo. 호스팅 배포는 R-40 |
 | D1 | auth-service 신규 + notification 폐기 | ✅ | (ADR-0001) | msa-auth-service 신규 + msa-notification-service archive |
 | D6 | notification-service archive | ✅ | (ADR-0001) | GitHub UI archive |
@@ -163,7 +163,7 @@
 | R-50 | api-gateway Rate Limit (SC Gateway RequestRateLimiter + Redis Token Bucket) | ✅ | 기본 (2)-5 (선택) | msa-api-gateway PR #7. default-filters + order-admin 별도 보수적 |
 | R-41 | api-gateway Response Aggregate Fallback (Resilience4j Circuit Breaker) | ✅ | 기본 (2)-3 (필수) + (2)-4 (선택) | msa-api-gateway PR #8. InventoryQueryService runCatching fallback. ADR-0009 책임 분담 |
 | R-45 | SonarCloud (public 무료) CI 통합 + Quality Gate 정책 | ✅ | 심화 (2)-1 (필수) | 7 polyrepo CI sonar step + sonarcloud.io 셋업 + [ADR-0011](./adr/0011-sonarcloud-quality-gate-policy.md) `wait=false` 결정 + Hotspot Review 절차. 자세히 [TROUBLESHOOTING §4.5](./TROUBLESHOOTING.md) |
-| R-47 | Slack `#security-report` 보안 알림 채널 (ADR + CI webhook + AlertManager) | 🔄 | 심화 (2)-3 (필수) | [ADR-0010](./adr/0010-security-alerting-strategy.md) ✅. Trivy workflow Slack step ✅. AlertManager severity=security 라우팅 매니페스트 ✅ (R-35 e 와 함께). 채널 생성 + Org Secret 등록 ⏸ (C) |
+| R-47 | Slack `#security-report` 보안 알림 채널 (ADR + CI webhook + AlertManager) | ✅ | 심화 (2)-3 (필수) | [ADR-0010](./adr/0010-security-alerting-strategy.md) ✅. Trivy workflow Slack step ✅. AlertManager severity=security 라우팅 매니페스트 ✅. 채널 생성 + Org Secret 등록 ✅. **cluster 검증 통과 (PR #114 들여쓰기 fix 후)** — manual fire → #alerts (Manual Warning) + #security-report (:rotating_light: Manual Security) 메시지 도착 (2026-05-17) |
 | R-57 | JUnit 단위 테스트 (7 polyrepo, ~48 케이스) | ✅ | 기본 (3)-1 (필수) | 7 PR 머지. 도메인 entity / state machine / JWT round-trip / CB Fallback. 작업 중 발견 3건: [TROUBLESHOOTING §1.8, §1.9](./TROUBLESHOOTING.md) |
 | R-35 (A) | Platform 매니페스트 7 set 작성 (cert-manager → external-secrets-config) | ✅ | 기본 (1)-3·(1)-4 (필수/선택) + (3)-3·(3)-6 (필수/선택) + 심화 (1)-2·(2)-3·(3)-2 (필수) | PR #78 / commit `974e01d`. 매니페스트 22 파일 + 첫 cluster up 후 보완 4 PR: PR #85 ClusterSecretStore IMDS 인증 ([TROUBLESHOOTING §7.11](./TROUBLESHOOTING.md)), PR #86 EBS CSI driver (self-managed kubeadm 필수, [§7.8](./TROUBLESHOOTING.md)), PR #87 platform-project sourceRepos 누락 보강 ([§7.6](./TROUBLESHOOTING.md)), PR #88 Istio gateway helm values `defaults:` schema wrapping ([§7.9](./TROUBLESHOOTING.md)) |
 | R-03 (A) | Istio Gateway + VirtualService + PeerAuthentication + DestinationRule + namespace injection | ✅ | 심화 (1)-2 (필수) | PR #81 / commit `e7c35a8`. `platform/12-istio-gateway/{application.yaml, manifests/{gateway, virtualservice, peer-authentication, destination-rule, namespace-injection}.yaml}` 6 파일. Sync Wave -3. mesh-wide mTLS STRICT + market-{dev,prod} 각 outlierDetection |
@@ -180,23 +180,23 @@
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
-| R-35 (B) | Platform 배포 reconcile 검증 (a~g) | ⏸ | (A) 와 동일 평가요소들의 실 검증 | (a) CNPG Cluster × 6 primary/replica up (b) RedisFailover × 2 (c) Kafka KRaft 3 broker + 4 KafkaTopic up + consumer lag exporter scrape (d) istio-cp pod + ingressgateway NodePort 30080/30443 (e) AlertManager → Slack #alerts / #security-report 라우팅 (f) Prometheus targets scrape + Grafana datasource up (g) ExternalSecret sync → Secret 생성. **첫 사이클 부분 검증**: (g) ExternalSecret 10 개 SecretSynced=True ✅ + (a) 3/6 PVC Bound + Loki/Tempo Running. **재검증 필요** |
-| R-03 (B) | Istio mesh 실 작동 검증 | ⏸ | 심화 (1)-2 (필수) | (1) `istioctl proxy-status` 모든 pod SYNCED (2) Gateway 외부 진입 — curl → api-gateway 도달 (3) PeerAuthentication mTLS — `tcpdump` 으로 sidecar 간 통신 암호화 확인 (4) DestinationRule outlier ejection 시연 |
-| R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ⏸ | 심화 (3)-2 (필수) | R-33 / R-35 (g) 와 묶음. PR #89 의 `auth-service-secrets` 가 troica/auth/jwt-secret 으로 채워서 auth-service / api-gateway 에 JWT_SECRET ENV 주입 |
-| R-33 | 6×2 Secret + ConfigMap 실값 | ⏸ | 심화 (3)-2 (필수) | ExternalSecrets Operator + AWS Secrets Manager. 9 secrets 등록 ✅ + PR #89 service 별 ExternalSecret 12 + ConfigMap 12. 첫 사이클 검증: 10 ExternalSecret SecretSynced=True ✅ |
-| R-41 (B) | K8s 디스커버리 + 장애 격리 실 검증 | ⏸ | 기본 (2)-1·(2)-3 (필수) | (1) ClusterIP+DNS `kubectl exec` + nslookup + curl (2) Fallback 시연 (inventory Pod down → 빈 list 반환) |
-| R-42 (B) | Postman + Newman E2E + Prometheus + Grafana 실 통과 | ⏸ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | workflow_dispatch 로 baseUrl=Istio Gateway 지정 → 7 step 시나리오 통과. Grafana 6 panel 실 데이터 확인 |
-| R-44 (B) | 독립 배포 E2E 무영향 검증 (Newman) | ⏸ | 심화 (1)-1 (필수) | 한 서비스만 image bump → 다른 서비스 트래픽 무영향 시연. Newman 으로 비교 |
-| R-47 (B) | AlertManager `#security-report` 라우팅 실 배포 | ⏸ | 심화 (2)-3 (필수) | severity=security label PromRule 실 fire → #security-report 메시지 수신 확인 |
-| R-48 (B) | RBAC 실 작동 검증 (`kubectl auth can-i`) | ⏸ | 심화 (3)-1·(3)-2 (필수) | developer / operator / sre 각 역할 검증 |
-| R-49 (B) | NetworkPolicy 통신 차단 검증 | ⏸ | 심화 (3)-3 (필수) | `kubectl exec` 다른 서비스에서 curl 거부 확인 |
-| R-50 (B) | RequestRateLimiter 실 작동 검증 | ⏸ | 기본 (2)-5 (선택) | k6 burst → 429 응답 확인 |
+| R-35 (B) | Platform 배포 reconcile 검증 (a~g) | ✅ | (A) 와 동일 평가요소들의 실 검증 | 2026-05-17 통과: (a) CNPG 6 Cluster `healthy state` (instances=1 PoC diet) (b) Redis 2 pod (Spotahome 제거 후 단순 K8s Deployment, PR #105) (c) Kafka KRaft 1 broker + 4 KafkaTopic Ready (PoC diet) (d) istio-ingressgateway NodePort 30080/30443 (e) AlertManager #alerts + #security-report (PR #114) (f) Prometheus targets active scrape + Grafana stack Running (g) **20 ExternalSecret SecretSynced=True**. PVC 11 Bound. 19 platform Application 모두 Healthy |
+| R-03 (B) | Istio mesh 실 작동 검증 | ✅ | 심화 (1)-2 (필수) | 2026-05-17 통과: Istio CP 2 pod + sidecar 8 pod 모두 inject (`[app istio-proxy]`) + mesh-wide PA STRICT + 6 service metrics-override (PERMISSIVE) + Gateway+VirtualService + 3 ns inject label (istio-system 포함 — PR #111) |
+| R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ✅ | 심화 (3)-2 (필수) | 2026-05-17 통과: 20 ExternalSecret 모두 SecretSynced=True. auth-jwt-secret (market-{dev,prod}) + auth-service-secrets 의 JWT_SECRET 가 auth-service / api-gateway pod 의 envFrom secretRef 로 정상 주입 |
+| R-33 | 6×2 Secret + ConfigMap 실값 | ✅ | 심화 (3)-2 (필수) | 2026-05-17 통과: 12 ConfigMap (6 service × 2 env) + ExternalSecret 12 동기화. pod env 의 실 ENV 매핑 정상 (`AUTH_DB_HOST=auth-db-rw.databases.svc...`, `REDIS_HOST=rfr-*-redis.redis.svc...`, `JWT_SECRET=<실값>`). envFrom secretRef + configMapRef 동시 적용 |
+| R-41 (B) | K8s 디스커버리 + 장애 격리 실 검증 | ⏸ | 기본 (2)-1·(2)-3 (필수) | (1) ClusterIP+DNS `kubectl exec` + nslookup + curl (2) Fallback 시연 (inventory Pod down → 빈 list 반환). **선택 검증 (기본 (2)-3 의 코드 측은 (A) 에서 ✅)** |
+| R-42 (B) | Postman + Newman E2E + Prometheus + Grafana 실 통과 | ⏸ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | **남은 마지막 R**. Part 1 (Newman E2E): long-running pod + image pull 5분 wait + `-c <container>` exec 패턴. Part 2 (Grafana): port-forward + 4 panel 시각. Prometheus targets active 부분 통과 (2026-05-17). cluster 재배포 후 진행 |
+| R-44 (B) | 독립 배포 E2E 무영향 검증 | ✅ | 심화 (1)-1 (필수) | 2026-05-17 통과: product-service rolling restart 30 초 동안 다른 4 service (auth/user/order/inventory) traffic 100% 정상 (5-20ms). product-service 만 endpoint pod IP 변경, 다른 service endpoint 그대로 |
+| R-47 (B) | AlertManager `#security-report` 라우팅 실 배포 | ✅ | 심화 (2)-3 (필수) | 2026-05-17 통과 (PR #114 들여쓰기 fix 후): manual fire (severity=security) → `:rotating_light: ManualSecurityTest` #security-report 도착. severity=warning → #alerts 도착. ADR-0010 채널 분기 실 작동 |
+| R-48 (B) | RBAC 실 작동 검증 (`kubectl auth can-i`) | ✅ | 심화 (3)-1·(3)-2 (필수) | 2026-05-17 통과: developer (Allow 4 + Deny 4) / operator (Allow 4 + Deny 5) / sre (Allow 4) 12 명령 모두 기대대로. ServiceAccount RBAC = 진정한 최소 권한 (rules=[]) |
+| R-49 (B) | NetworkPolicy 통신 차단 검증 | ✅ | 심화 (3)-3 (필수) | 2026-05-17 통과: ALLOW (api-gateway label → auth-service:9005, 0.71s) + DENY (product-service label → auth-service:9005, 5s timeout) + DENY (port mismatch user-service:8100, 5s timeout). label-level + port-level 분리 |
+| R-50 (B) | RequestRateLimiter 실 작동 검증 | ⏸ | 기본 (2)-5 (선택) | **선택 task**. Redis 정상 작동 검증된 상태이므로 runbook (`docs/demo/r-50-rate-limit-verification.md`) 실행 시 즉시 통과 가능. 평가 cover 가 아니므로 시간 여유 시 |
 
 ### (C) 외부 수동 셋업
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
-| R-47 | Slack `#security-report` 채널 생성 + webhook 발급 | ⏸ | 심화 (2)-3 (필수) | Slack workspace 작업 (5 분). Org Secret `SLACK_SECURITY_WEBHOOK_URL` 등록 |
+| R-47 | Slack `#security-report` 채널 생성 + webhook 발급 | ✅ | 심화 (2)-3 (필수) | 2026-05-17 완료. 채널 생성 + Troica AlertManager 앱 통합 + AWS Secrets Manager 의 `troica/slack/webhooks` 등록. cluster 검증 R-47 (B) 통과 |
 
 ---
 
@@ -294,37 +294,37 @@
 | (1)-1 이벤트 스토밍 + 독립 배포/확장/격리 | 필수 | P4.1 + Phase 4 polyrepo 전체 + W1 이벤트 스토밍 | ✅ |
 | (1)-2 동기 REST vs 비동기 이벤트 적용 기준 | 필수 | ADR-0003 / ADR-0005 / PROJECT_PLAN §5.2 | ✅ |
 | (1)-3 Database per Service | 필수 | Phase 4 전체 + PROJECT_PLAN §5.3 + R-35 (A) postgres-clusters 매니페스트 | ✅ |
-| (1)-4 Kafka StatefulSet + 토픽 + 비동기 | 선택 | R-35 (A) kafka-cluster 매니페스트 ✅ + ADR-0004. cluster 검증 R-35 (B) ⏸ | 🔄 |
+| (1)-4 Kafka StatefulSet + 토픽 + 비동기 | 선택 | R-35 (A) kafka-cluster 매니페스트 ✅ + ADR-0004 + R-35 (B) 검증 ✅ (1 broker KRaft + 4 KafkaTopic Ready) | ✅ |
 | (1)-5 Event Sourcing 1 서비스 | 선택 | R-22 / ADR-0007 (inventory) | ✅ |
-| (2)-1 K8s ClusterIP + DNS 디스커버리 | 필수 | Helm chart Service template (P1.3) ✅ + R-41 (B) `kubectl exec` 시연 ⏸ | 🔄 |
+| (2)-1 K8s ClusterIP + DNS 디스커버리 | 필수 | Helm chart Service template ✅ + R-44 (B) probe 시연으로 transitive 검증 (`auth-service.market-dev.svc.cluster.local` 등 DNS 정상 응답) | ✅ |
 | (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.5 / P4.6 | ✅ |
 | (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (A) 코드 머지 | ✅ |
-| (2)-4 Resilience4j + Fault Injection | 선택 | **R-41** CB ✅ / Fault Injection 은 R-41 (B) 검증 | 🔄 |
-| (2)-5 Rate Limit | 선택 | **R-50** | ✅ |
-| (3)-1 JUnit 단위 + CI | 필수 | **R-57** (7 polyrepo ~48 케이스) | ✅ |
-| (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42 (A)** collection + workflow 머지 ✅ + R-42 (B) cluster 통과 ⏸ | 🔄 |
-| (3)-3 Prometheus + Grafana | 필수 | **R-35 (A)** kube-prometheus-stack + R-42 (A) Grafana 대시보드 ConfigMap ✅ + cluster 검증 ⏸ | 🔄 |
+| (2)-4 Resilience4j + Fault Injection | 선택 | **R-41** CB ✅ / Fault Injection 은 시간 여유 시 추가 | 🔄 |
+| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + cluster 검증 ⏸ (선택 task) | 🔄 |
+| (3)-1 JUnit 단위 + CI | 필수 | **R-57** (7 polyrepo ~48 케이스) — CI history 모두 success + cluster image tag 증거 | ✅ |
+| (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42 (A)** collection + workflow 머지 ✅ + R-42 (B) cluster 통과 ⏸ (재배포 후) | 🔄 |
+| (3)-3 Prometheus + Grafana | 필수 | **R-35 (A)** kube-prometheus-stack + R-42 (A) Grafana 대시보드 ConfigMap ✅ + Prometheus targets active scrape 부분 ✅ + Grafana UI 4 panel 시각 검증 ⏸ | 🔄 |
 | (3)-4 Testcontainers | 선택 | **R-58** | 📌 |
 | (3)-5 Newman CLI in CI | 선택 | **R-42 (A)** `.github/workflows/e2e-newman.yml` ✅ + cluster 실 실행 ⏸ | 🔄 |
-| (3)-6 Kafka consumer lag Exporter | 선택 | R-35 (A) Strimzi metrics + Grafana 대시보드 panel ✅ + cluster scrape ⏸ | 🔄 |
+| (3)-6 Kafka consumer lag Exporter | 선택 | R-35 (A) Strimzi metrics + Grafana 대시보드 panel ✅ + kafka-exporter pod Running ✅ + cluster scrape (Prometheus targets 에 포함) ✅ | ✅ |
 
 ### 심화 프로젝트
 
 | 평가요소 | 필수/선택 | 대응 R / Phase | 상태 |
 |---|---|---|---|
-| (1)-1 독립 배포 + E2E 무영향 검증 | 필수 | **R-44** (B) Newman 비교 검증 | 🔄 |
-| (1)-2 API GW ↔ Service Mesh 협업 | 필수 | **R-44** ADR-0009 ✅ + **R-03 (A)** Istio 매니페스트 ✅ | ✅ |
-| (1)-3 PodDisruptionBudget | 필수 | **R-43** | ✅ |
+| (1)-1 독립 배포 + E2E 무영향 검증 | 필수 | **R-44 (B)** 통과 ✅ — product-service rolling 30s 동안 다른 4 service traffic 100% 정상 + endpoint stability | ✅ |
+| (1)-2 API GW ↔ Service Mesh 협업 | 필수 | **R-44** ADR-0009 ✅ + **R-03 (A/B)** Istio 매니페스트 + cluster 검증 ✅ | ✅ |
+| (1)-3 PodDisruptionBudget | 필수 | **R-43** ✅ — 8 PDB market-dev + drain 차단 검증 | ✅ |
 | (1)-4 KEDA | 선택 | **R-51** | 📌 |
 | (1)-5 ArgoCD Rollouts Canary | 선택 | **R-52** | 📌 |
 | (2)-1 SonarQube 80% 게이트 | 필수 | **R-45** + ADR-0011 | ✅ |
 | (2)-2 Trivy config (매니페스트 스캔) | 필수 | **R-46** workflow 머지 (info-mode) | ✅ |
-| (2)-3 Slack #security-report | 필수 | **R-47** ADR-0010 ✅ + R-46 webhook ✅ + R-35 (A) AlertManager 매니페스트 ✅ + 채널 생성 ⏸ (C) | 🔄 |
+| (2)-3 Slack #security-report | 필수 | **R-47 (B)** 통과 ✅ — 채널 생성 + AlertManager mount (PR #114 들여쓰기 fix) + manual fire → #security-report / #alerts 메시지 도착 | ✅ |
 | (2)-4 OWASP ZAP DAST | 선택 | **R-54** | 📌 |
 | (2)-5 OPA Gatekeeper | 선택 | **R-53** | 📌 |
 | (3)-1 RBAC 역할 분리 | 필수 | **R-48** (사람 RBAC) | ✅ |
 | (3)-2 ServiceAccount + Role/RoleBinding | 필수 | **R-48** (서비스 RBAC) + R-25 + R-33 + R-35 (A) ExternalSecret 매니페스트 | ✅ |
-| (3)-3 NetworkPolicy + 차단 테스트 | 필수 | **R-49** (A) 매니페스트 ✅ / (B) 차단 검증 ⏸ | 🔄 |
+| (3)-3 NetworkPolicy + 차단 테스트 | 필수 | **R-49 (B)** 통과 ✅ — ALLOW (api-gateway label, 0.71s) + DENY (label/port mismatch, 5s timeout) | ✅ |
 | (3)-4 Incident Response 5 단계 | 선택 | **R-56** | 📌 |
 | (3)-5 Falco DaemonSet | 선택 | **R-55** | 📌 |
 
