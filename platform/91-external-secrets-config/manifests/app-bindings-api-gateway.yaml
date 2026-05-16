@@ -30,12 +30,18 @@ data:
   # Reactive Redis client 가 이걸 사용.
   REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
   REDIS_PORT: "6379"
-  # Spring Boot main: Web (Servlet) + WebFlux (Reactive) Security 의 같은 bean 이름
-  # 중복 (WebSecurityConfiguration vs WebFluxSecurityConfiguration 의 conversionServicePostProcessor)
-  # → APPLICATION FAILED TO START. msa-api-gateway 의 build.gradle.kts 에서 spring-boot-starter-web
-  # 또는 spring-boot-starter-security (Servlet) 제거가 정식 fix. 그 PR 머지 + image rebuild
-  # 까지의 임시방편으로 override 허용.
+  # msa-api-gateway 의 build.gradle.kts 에 spring-boot-starter-web (servlet) +
+  # spring-boot-starter-webflux (reactive) 둘 다 dependency → classpath 충돌:
+  #   증상 1: WebSecurityConfiguration vs WebFluxSecurityConfiguration 의
+  #           conversionServicePostProcessor bean 이름 중복
+  #   증상 2: Spring Cloud Gateway 가 classpath 의 spring-mvc 발견 → "Spring MVC
+  #           found on classpath, which is incompatible with Spring Cloud Gateway"
+  # 정식 fix = msa-api-gateway repo 의 build.gradle.kts 에서 spring-boot-starter-web
+  # 제거 + image rebuild. 그 PR 머지 까지의 임시 우회:
+  #   - SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING=true: 증상 1 (bean 중복) 허용
+  #   - SPRING_MAIN_WEB_APPLICATION_TYPE=reactive: 증상 2 (SCG 검증) 강제 reactive 선언
   SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+  SPRING_MAIN_WEB_APPLICATION_TYPE: "reactive"
   # SC Gateway routes 의 backend URI
   ROUTE_USER_SERVICE_URI: "http://user-service.market-dev.svc.cluster.local:8004"
   ROUTE_ORDER_SERVICE_URI: "http://order-service.market-dev.svc.cluster.local:8002"
@@ -64,6 +70,7 @@ data:
   REDIS_HOST: "rfr-inventory-redis.redis.svc.cluster.local"
   REDIS_PORT: "6379"
   SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+  SPRING_MAIN_WEB_APPLICATION_TYPE: "reactive"
   ROUTE_USER_SERVICE_URI: "http://user-service.market-prod.svc.cluster.local:8004"
   ROUTE_ORDER_SERVICE_URI: "http://order-service.market-prod.svc.cluster.local:8002"
   GRPC_PRODUCT_SERVICE_ADDR: "static://product-service.market-prod.svc.cluster.local:9001"
