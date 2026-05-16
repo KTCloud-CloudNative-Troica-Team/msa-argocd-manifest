@@ -53,16 +53,32 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          # Spring Boot 3.5 + JPA + Hibernate + HikariCP + Redis + Kafka 합산 startup
+          # 시간이 40-50초 발생. liveness 의 initialDelaySeconds 30s + (failureThreshold 3
+          # × periodSeconds 10s) = 60s window 안에 ready 가 안 되면 kubelet 이 죽임.
+          # startupProbe 로 startup 단계 까지 liveness/readiness 보호 (failureThreshold
+          # × periodSeconds 합산이 startup 시간 보다 큰 값으로).
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
               port: http
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: 10
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: 10
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
 

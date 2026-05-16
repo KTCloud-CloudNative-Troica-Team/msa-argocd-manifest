@@ -86,6 +86,13 @@ rbac:
   #     verbs: ["get", "watch"]
 
 probes:
+  # startupProbe — startup 단계 까지 liveness/readiness 보호.
+  # initialDelaySeconds (15) + periodSeconds (5) × failureThreshold (30) = 165s window.
+  # 실 startup 35-50초 + Redis/Kafka 연결 + R-44 Istio sidecar 동기 까지 cover.
+  startup:
+    initialDelaySeconds: 15
+    periodSeconds: 5
+    failureThreshold: 30
   liveness:
     path: /actuator/health/liveness
     initialDelaySeconds: 30
