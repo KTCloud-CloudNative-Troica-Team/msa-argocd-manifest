@@ -17,7 +17,7 @@ spec:
       data:
         INVENTORY_DB_PASSWORD: "{{ .dbPassword }}"
         # Spotahome Redis auth 미설정 → 빈 password
-        REDIS_PASSWORD: ""
+        REDIS_PASSWORD: "troica-redis-poc-pw-dev"
   data:
     - secretKey: dbPassword
       remoteRef:
@@ -60,7 +60,7 @@ spec:
     template:
       data:
         INVENTORY_DB_PASSWORD: "{{ .dbPassword }}"
-        REDIS_PASSWORD: ""
+        REDIS_PASSWORD: "troica-redis-poc-pw-dev"
   data:
     - secretKey: dbPassword
       remoteRef:

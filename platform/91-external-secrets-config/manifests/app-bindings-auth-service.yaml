@@ -32,7 +32,7 @@ spec:
         JWT_SECRET: "{{ .jwtSecret }}"
         # Redis password 비활성 (Spotahome auth 미설정). Spring 의 default 는 "auth-service"
         # 인데 그러면 connection fail. 빈 문자열로 override.
-        REDIS_PASSWORD: ""
+        REDIS_PASSWORD: "troica-redis-poc-pw-dev"
   data:
     - secretKey: dbPassword
       remoteRef:
@@ -78,7 +78,7 @@ spec:
       data:
         AUTH_DB_PASSWORD: "{{ .dbPassword }}"
         JWT_SECRET: "{{ .jwtSecret }}"
-        REDIS_PASSWORD: ""
+        REDIS_PASSWORD: "troica-redis-poc-pw-dev"
   data:
     - secretKey: dbPassword
       remoteRef:
