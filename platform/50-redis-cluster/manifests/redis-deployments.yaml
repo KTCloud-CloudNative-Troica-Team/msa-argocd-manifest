@@ -15,6 +15,11 @@
 # Service 이름 = `rfr-{auth,inventory}-redis` (이전 Spotahome 의 RedisFailover service
 # 이름 패턴 유지) → ConfigMap (platform/91-external-secrets-config/) 의 REDIS_HOST 와
 # label (app=redis, redisfailover_name=*) 모두 호환. 다른 매니페스트 영향 0.
+#
+# securityContext: KSV-0118 (default security context, root 가능) + KSV-0014
+# (readOnlyRootFilesystem false) — Trivy high alert 해소. redis:7-alpine 의 default
+# user 는 999 (redis). readOnlyRootFilesystem 시 redis 가 /data 에 dump.rdb 쓰므로
+# emptyDir mount 필요. 추가로 /tmp 도 mount (Redis 가 일시 파일 쓰는 경우).
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -36,9 +41,19 @@ spec:
         app: redis
         redisfailover_name: auth-redis
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: redis
           image: redis:7-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 6379
               name: redis
@@ -58,6 +73,16 @@ spec:
               port: 6379
             initialDelaySeconds: 15
             periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -93,9 +118,19 @@ spec:
         app: redis
         redisfailover_name: inventory-redis
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: redis
           image: redis:7-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 6379
               name: redis
@@ -115,6 +150,16 @@ spec:
               port: 6379
             initialDelaySeconds: 15
             periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
