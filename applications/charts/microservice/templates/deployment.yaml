@@ -42,6 +42,14 @@ spec:
               containerPort: {{ .Values.service.grpcPort }}
             {{- end }}
           env:
+            # R-42 (평가 기본 (3)-3 필수): Spring Boot actuator/prometheus endpoint 노출.
+            # Spring Boot default = `health` 만 노출 → /actuator/prometheus 404 →
+            # ServiceMonitor scrape 실패 (up = 0) → Prometheus 측 metric 없음 →
+            # Grafana panel No data. 본 env 가 Spring Boot 의 RelaxedBinding 으로
+            # management.endpoints.web.exposure.include 매핑 → prometheus + metrics +
+            # info + health 노출. R-41 의 resilience4j_circuitbreaker_state 도 함께 노출.
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,prometheus,info,metrics"
             {{- if .Values.springProfilesActive }}
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.springProfilesActive | quote }}
@@ -111,6 +119,10 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            # R-42 (평가 기본 (3)-3 필수): worker 도 actuator/prometheus 노출
+            # (Resilience4j metric, JVM Heap, http_server_requests 측 같이 scrape)
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,prometheus,info,metrics"
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.worker.springProfilesActive | quote }}
             {{- with .Values.env }}
