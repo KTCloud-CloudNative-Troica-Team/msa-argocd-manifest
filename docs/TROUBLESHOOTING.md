@@ -624,6 +624,27 @@ t3.medium 유지 (control plane only). 비용 +$0.156/h.
 
 ---
 
+### 5.6 terraform `aws_instance.security_groups` deprecated attribute + SG inline ingress 충돌 (R-63)
+
+**증상**: R-41 검증 중 SG ingress rule (30080/30443 from 0.0.0.0/0) 만 추가하는 `terraform plan` 이 **8 instance + 12 EBS PVC 모두 force replacement** 표시. in-place 변경이어야 하는 작업이 cluster 전체 destroy + recreate trigger.
+
+**원인 1 — `aws_instance.security_groups` 는 EC2-Classic 시대 attribute (SG name 받음)**. 우리 코드가 SG ID 를 넘김 → AWS 측 실 attachment 는 `vpc_security_group_ids` 측에 기록 + state 의 `security_groups` 는 empty list → terraform plan 이 desired (SG ID) vs state (empty) 의 diff 를 force replacement marker 로 표시.
+
+**원인 2 — `aws_security_group` 의 inline `ingress` block 과 별도 `aws_security_group_rule` 의 충돌**. 매 plan 마다 inline block 가 separate rule 흡수하려 함 → drift loop. inline rule 6 + separate rule 3 의 매 plan 마다 destroy + recreate (효과 0, terraform aws provider 의 알려진 패턴).
+
+**즉시 회복 (이번 cycle)**: AWS CLI 직접:
+```bash
+aws ec2 authorize-security-group-ingress --group-id sg-XXX --protocol tcp --port 30080 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id sg-XXX --protocol tcp --port 30443 --cidr 0.0.0.0/0
+```
+
+**영구 fix path (평가 후 별도 PR)**:
+- 모든 `aws_instance` 의 `security_groups` → `vpc_security_group_ids` 로 attribute 교체
+- `aws_security_group` 의 inline `ingress` block 모두 제거 → 전부 `aws_security_group_rule` separate resource 로 통일
+- 다음 destroy + apply cycle 에서 정상 attribute 로 처음부터 build 되도록
+
+---
+
 ## 6. Windows / PowerShell
 
 ### 6.1 PowerShell `-flag=value` 인수 파싱 깨짐
@@ -1011,6 +1032,86 @@ R-25/R-33 의 짝).
 - self-managed cluster 의 모든 AWS API 호출 컴포넌트 (ESO / EBS CSI / ALB controller
   / etc) 는 IRSA 가 아닌 IMDS 패턴 사용
 - 첫 cluster up 전 ClusterSecretStore / 다른 IAM 사용 매니페스트 의 auth section 점검
+
+---
+
+### 7.12 istio-cp Application 의 multi-source chart race — istiod ↔ ingressgateway (R-62)
+
+**증상**: 12 사이클 동안 매 destroy + apply 마다 `istio-ingressgateway` pod 의 `ImagePullBackOff` 가 재발. PR #111 (namespace inject label) + PR #117 (Sync Wave -4 → -2) 에서도 동일 issue 반복.
+
+**원인**: `platform/11-istio-cp/application.yaml` 의 multi-source helm 으로 istiod chart + gateway chart 묶음 → ArgoCD 가 두 chart 를 **같은 sync wave (-2) 안에서 동시 apply**:
+1. istiod Deployment 생성 — pod 아직 Ready X
+2. ingressgateway Deployment 동시 생성 → 첫 pod 시도
+3. sidecar inject MutatingWebhookConfiguration 호출 → istiod endpoint 비어 있거나 connection refused
+4. webhook fail 또는 skip → image `auto` 인 채 stale pod → `ImagePullBackOff` lock
+5. 이후 istiod Ready 되어도 ingressgateway template 불변 → stale pod 갱신 X
+
+이전 PR 들이 해결한 layer = **Application 부모 ordering**. 같은 Application 안의 두 chart 간 ordering 은 Sync Wave 가 못 강제. multi-source 안 모든 resource 가 동일 sync wave.
+
+**영구 fix (PR #118)**: `ingressgateway` 를 별도 Application `platform/13-istio-ingressgateway/` (Sync Wave -1) 로 분리. ordering:
+- Wave -5: istio-base CRD
+- Wave -3: istio-system namespace inject label
+- Wave -2: **istiod chart 만 + Healthy 검증**
+- Wave -1: **istiod Ready 상태에서 ingressgateway sync** → webhook mutate 정상 → image `auto → proxyv2:1.23.3`
+
+매니페스트 정의로 race 영구 제거. 매 cluster cycle 자동 작동.
+
+---
+
+### 7.13 platform/30-kube-prometheus-stack single-source → troica dashboard ConfigMap 누락 (R-64)
+
+**증상**: Grafana 의 dashboards list 에 "Troica — 서비스 SLI 대시보드" 가 보이지 않음. `kubectl get configmap -n monitoring troica-services-dashboard` = NotFound.
+
+**원인**: `platform/30-kube-prometheus-stack/application.yaml` 의 spec.source 가 helm chart 만 single source. `platform/30-kube-prometheus-stack/dashboards/troica-services.yaml` ConfigMap 매니페스트는 ArgoCD 가 sync 안 함 → cluster 에 ConfigMap 없음 → Grafana sidecar 가 dashboard 발견 못 함.
+
+**임시 회복 (이번 cycle)**: `kubectl apply -f <raw URL>` 직접:
+```bash
+curl -fsSL https://raw.githubusercontent.com/.../platform/30-kube-prometheus-stack/dashboards/troica-services.yaml | kubectl apply -f -
+```
+
+**영구 fix path (평가 후 별도 PR)**: application.yaml 을 `sources:` (multi) 로 변경 — helm chart + git directory (dashboards/) 둘 다 sync. ConfigMap 은 helm chart 의 resource 와 race 없음 (Grafana sidecar 가 watch 측). 또는 별도 `platform/31-troica-dashboards/` Application 으로 분리.
+
+---
+
+### 7.14 actuator/prometheus 404 — `micrometer-registry-prometheus` 의존성 부재 (R-65)
+
+**증상**: msa-argocd-manifest PR #120 의 chart env (`MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE`) 가 새 pod 에 정상 적용됐는데도 `/actuator/prometheus` 가 여전히 404. ServiceMonitor scrape `up=0`. Troica dashboard 6 panel 모두 No data.
+
+**증거 사슬**:
+- `/actuator/metrics` = 200 (JSON 형식, spring-boot-starter-actuator 만으로 노출)
+- `/actuator/prometheus` = 404 (Prometheus text format endpoint 자체 없음)
+- `/healthz` = 200 + actuator JSON (actuator core 활성)
+- `kubectl exec -- env` = `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE` 정상 적용
+
+**원인**: Spring Boot 의 actuator/prometheus 가 노출되려면 두 조건 모두 필요:
+1. **`spring-boot-starter-actuator`** 의존성 (actuator core)
+2. **`micrometer-registry-prometheus`** 의존성 (Prometheus text format registry)
+
+우리 6 polyrepo 의 build.gradle.kts 에 1번만 있고 2번 부재. env 로 exposure.include 활성화해도 endpoint 자체가 존재 안 함.
+
+**Lesson — 한 layer 만 만지면 효과 0**: 내가 PR #120 (env) 를 root cause 라 단정하고 PR 했지만 의존성 부재가 동시 issue. 양쪽 다 fix 필요한 경우 fact 부족 상태의 PR 은 효과 없음. 의심 시 cluster fact (curl, kubectl exec) 로 정확한 layer 부터 분리.
+
+**영구 fix path (PR 6 개 — api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12)**:
+```kotlin
+// build.gradle.kts
+runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+```
+
+머지 후 CI image rebuild → ECR push → manifest dev tag bump (CI workflow 자동) → ArgoCD sync → pod rolling → `/actuator/prometheus` 200 + ServiceMonitor `up=1` → Troica dashboard panel data.
+
+---
+
+### 7.15 R-50 RequestRateLimiter anonymous fallback — envoy mesh 측 key 분산 (R-50 cluster fail)
+
+**증상**: anonymous 호출 (JWT 없음) 의 `/api/v1/users` 측 15 회 호출 시 remaining 패턴 = `9, 9, 9, 8, 8, 9, 7, 9, 7, 8, 6, 8, 5, 7, 4` (비순차적). burst 10 도달 안 함 → 429 안 나옴.
+
+**원인 가설**: `RateLimitKeyResolverConfig` 의 fallback path 가 `exchange.request.remoteAddress.address.hostAddress` 측. WebFlux 의 reactive Netty 의 `remoteAddress` 가 istio sidecar mesh layer 측 매 connection 마다 다른 src IP (envoy ephemeral worker 또는 mTLS 측) 보임 → key 매번 다름 → 다른 bucket → 429 안 도달.
+
+JWT 측 호출 (Bearer token 측 key) 도 cluster 측에서 같은 패턴 — root cause 정확한 layer 미규명.
+
+**평가 영향**: R-50 = 평가 기본 (2)-5 **(선택)**. 필수 X. 발표 자료 측 응답 header (`x-ratelimit-remaining`, `x-ratelimit-burst-capacity`) 노출만으로 매니페스트 + ratelimit filter 작동 증명 가능 (token bucket 차감 자체는 확인됨). 단 burst 도달 시연은 보류.
+
+**평가 후 follow-up**: anonymous 측 fallback 을 `request.headers.first("X-Forwarded-For")` 측으로 변경 (envoy 가 client public IP 측 header 로 forward). 또는 default-filters / route filter 측 중복 제거.
 
 ---
 
