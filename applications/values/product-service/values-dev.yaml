@@ -1,5 +1,5 @@
 image:
-  tag: main-4056531 # CI update-dev job이 yq로 자동 교체
+  tag: main-9d8bdcd # CI update-dev job이 yq로 자동 교체
 replicaCount: 1
 springProfilesActive: "dev"
 resources:
