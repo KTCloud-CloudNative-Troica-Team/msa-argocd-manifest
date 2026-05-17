@@ -90,8 +90,8 @@ flowchart TB
   GW -->|"/api/v1/orders/** — BFF (gRPC)"| OrderApp
   GW -->|"/api/v1/inventories/** — BFF (gRPC)<br/>+ R-41 Circuit Breaker (InventoryQueryService)"| InvApp
 
-  GW -.->|"/api/v1/users/** — SC Gateway 패스스루 (REST)<br/>+ R-50 RequestRateLimiter (burst 10, replenish 1/s)"| UserApp
-  GW -.->|"/admin/v1/orders/** — SC Gateway 패스스루 (REST)"| OrderApp
+  GW -.->|"/api/v1/users/** — SC Gateway 패스스루 (REST)<br/>+ R-50 default-filters (burst 10, replenish 1/s)"| UserApp
+  GW -.->|"/admin/v1/orders/** — SC Gateway 패스스루 (REST)<br/>+ R-50 별도 filter (burst 3, 더 빡빡)"| OrderApp
 
   OrderWk ==>|publish| TopicPending
   TopicPending ==>|consume| InvApp
@@ -165,16 +165,19 @@ Client → NLB DNS:80/:443 → NodePort 30080/30443 (worker) → istio-ingressga
 
 | 경로 | 패턴 | 방식 | ConfigMap key |
 |---|---|---|---|
-| `/api/v1/auth/{signup,signin,check}` | BFF | api-gateway → auth-service gRPC `:9005` | `GRPC_AUTH_SERVICE_ADDR` |
+| `/api/v1/auth/{signup,signin,check}` | BFF (REST controller, gRPC client) | api-gateway → auth-service gRPC `:9005` | `GRPC_AUTH_SERVICE_ADDR` |
 | `/api/v1/products/**` | BFF | api-gateway → product-service gRPC `:9001` | `GRPC_PRODUCT_SERVICE_ADDR` |
 | `/api/v1/orders/**` | BFF | api-gateway → order-service gRPC `:9002` | `GRPC_ORDER_SERVICE_ADDR` |
 | `/api/v1/inventories/**` | BFF + **R-41 CB** | api-gateway → inventory-service gRPC `:9003` + `InventoryQueryService` runCatching fallback | `GRPC_INVENTORY_SERVICE_ADDR` |
-| `/api/v1/users/**` | SC Gateway 패스스루 + **R-50 RateLimit** | api-gateway → user-service REST `:8004` | `ROUTE_USER_SERVICE_URI` |
-| `/admin/v1/orders/**` | SC Gateway 패스스루 | api-gateway → order-service admin REST `:8002` | `ROUTE_ORDER_SERVICE_URI` |
+| `/api/v1/users/**` | SC Gateway 패스스루 + **R-50 default-filters** | api-gateway → user-service REST `:8004` (burst 10, replenish 1/s) | `ROUTE_USER_SERVICE_URI` |
+| `/admin/v1/orders/**` | SC Gateway 패스스루 + **R-50 별도 filter (burst 3)** | api-gateway → order-service admin REST `:8002` | `ROUTE_ORDER_SERVICE_URI` |
 
 - 모든 요청에 `JwtHeaderCheckFilter` 적용 → auth-service gRPC `CheckValidity` 호출 → ADR-0005
-- `/api/v1/users` 측에 RequestRateLimiter filter (R-50) — `userKeyResolver` (Bearer token 또는 client IP)
-- `/api/v1/inventories` 측 Resilience4j Circuit Breaker (R-41) — backend down 시 빈 list fallback (110-280ms fail-fast)
+- **R-50 RequestRateLimiter 적용 범위 (api-gateway application.yaml 측 주석):**
+  - **SCG default-filters** = `/api/v1/users` + `/admin/v1/orders` 측 양쪽 적용 (burst 10/3 차등)
+  - **BFF 경로** (`/api/v1/auth`, `/products`, `/orders`, `/inventories`) 는 WebFlux controller 가 직접 처리 → SCG 안 거침 → ratelimit X (R-50 매니페스트 주석에 "발표 단계 한정 SC Gateway routes 만 cover, BFF 경로는 Resilience4j RateLimiter 또는 후속 WebFilter 로 보강 예정")
+  - key resolver = `userKeyResolver` (Bearer token > client IP > "anonymous", `RateLimitKeyResolverConfig`)
+- **R-41 Resilience4j Circuit Breaker**: `/api/v1/inventories/**` 측 `InventoryQueryService.runCatching` — backend down 시 빈 list fallback (110-280ms fail-fast = CB OPEN signature)
 
 ### 2. 서비스 간 (Kafka 토픽만)
 

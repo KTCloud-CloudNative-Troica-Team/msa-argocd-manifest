@@ -42,7 +42,7 @@ flowchart TB
     direction TB
     BootDir["bootstrap/<br/>root-app.yaml + apps.yaml"]
     ProjDir["projects/<br/>AppProject × 2 (market + platform)"]
-    PlatDir["platform/ — 18 Application<br/>cert-manager / ebs-csi / rbac<br/>istio-{base,cp,gateway,ingressgateway}<br/>prometheus / loki / tempo<br/>cnpg / strimzi / external-secrets-op<br/>kafka / postgres / redis<br/>network-policies / external-secrets-config"]
+    PlatDir["platform/ — 19 Application<br/>cert-manager / ebs-csi / rbac<br/>istio-{base,cp,gateway,ingressgateway}<br/>kube-prometheus-stack / loki / tempo<br/>troica-prometheus-rules<br/>cnpg / strimzi / external-secrets-op<br/>kafka / postgres / redis<br/>network-policies / external-secrets-config"]
     AppDir["applications/<br/>appset.yaml + charts/microservice<br/>+ values/{6 service}/{values, values-dev}.yaml"]
     Tests["tests/e2e/<br/>troica-market-e2e.postman_collection.json"]
     Wf[".github/workflows/<br/>e2e-newman.yml + trivy-manifest-scan.yml"]
@@ -139,14 +139,14 @@ flowchart TB
 ### 3. msa-argocd-manifest (GitOps 단일 진실의 원천)
 - `bootstrap/`: ArgoCD 진입점 (root-app + 3 child Application)
 - `projects/`: AppProject CRD × 2 (market / platform)
-- `platform/`: **18 Application** (Sync Wave -8 ~ 5):
-  - **인프라**: 00-cert-manager / 05-ebs-csi / 05-rbac
-  - **Istio mesh (4)**: 10-istio-base (Wave -5, CRD) / 11-istio-cp (Wave -2, istiod) / 12-istio-gateway (Wave -3, Gateway+VS+PeerAuth+DestinationRule+namespace label) / **13-istio-ingressgateway** (Wave -1, R-62 PR #118 분리)
-  - **Observability**: 30-kube-prometheus-stack / 30-loki / 30-tempo / 31-prometheus-rules
-  - **Operators**: 40-cnpg-operator / 40-external-secrets-operator / 40-strimzi-operator
-  - **Stateful**: 50-kafka-cluster / 50-postgres-clusters / 50-redis-cluster
-  - **Security**: 60-network-policies (R-49 default-deny)
-  - **Config**: 91-external-secrets-config
+- `platform/`: **19 Application** (Sync Wave -8 ~ 5):
+  - **인프라 (3)**: 00-cert-manager / 05-ebs-csi / 05-rbac (Wave -8, R-48)
+  - **Istio mesh (4)**: 10-istio-base (Wave -5, CRD) / 11-istio-cp (Wave -2, istiod only) / 12-istio-gateway (Wave -3, Gateway+VS+PeerAuth+DestinationRule+namespace label) / **13-istio-ingressgateway** (Wave -1, R-62 PR #118 분리)
+  - **Observability (4)**: 30-kube-prometheus-stack / 30-loki / 30-tempo / 31-prometheus-rules (troica-prometheus-rules, R-47 AlertManager 룰)
+  - **Operators (3)**: 40-cnpg-operator / 40-external-secrets-operator / 40-strimzi-operator
+  - **Stateful (3)**: 50-kafka-cluster / 50-postgres-clusters / 50-redis-cluster
+  - **Security (1)**: 60-network-policies (R-49 default-deny)
+  - **Config (1)**: 91-external-secrets-config (R-25/R-33 service envFrom binding)
 - `applications/`: 6 service Helm values (`values/<service>/values.yaml + values-dev.yaml`) + 공통 차트 (`charts/microservice/`)
 - `tests/e2e/`: Newman collection + Postman 시나리오 7 step
 - `.github/workflows/`: e2e-newman.yml (R-42) + trivy-manifest-scan.yml (R-46)
