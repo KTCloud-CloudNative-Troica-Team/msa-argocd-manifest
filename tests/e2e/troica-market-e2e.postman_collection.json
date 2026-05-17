@@ -145,6 +145,13 @@
               "    console.log('Picked inventoryId:', inv.id, 'quantity:', inv.quantity);",
               "} else {",
               "    console.warn('재고 빈 상태 — 주문 step skip 예정');",
+              "}",
+              "// productId/inventoryId 부재 시 step 5, 6 skip + step 7 jump.",
+              "// Postman 의 setNextRequest 는 'next request' 만 영향 — 호출 위치의 다음 request 부터 적용.",
+              "// 따라서 step 5 의 prerequest 에서 호출하면 step 5 자체는 실행. step 4 의 test 측에서 처리.",
+              "if (!pm.collectionVariables.get('productId') || !pm.collectionVariables.get('inventoryId')) {",
+              "    console.warn('데이터 부족 — step 5/6 skip + step 7 jump');",
+              "    pm.execution.setNextRequest('7. JWT 검증 — GET /api/v1/auth/check');",
               "}"
             ]
           }
@@ -175,7 +182,7 @@
               "// 카탈로그 / 재고가 비어 있으면 주문 step 건너뜀",
               "if (!pm.collectionVariables.get('productId') || !pm.collectionVariables.get('inventoryId')) {",
               "    console.warn('productId 또는 inventoryId 없음 — 주문 step 건너뜀');",
-              "    postman.setNextRequest(null);",
+              "    pm.execution.setNextRequest(null);",
               "}"
             ]
           }
@@ -215,7 +222,7 @@
             "exec": [
               "if (!pm.collectionVariables.get('orderId')) {",
               "    console.warn('orderId 없음 — 주문 조회 건너뜀');",
-              "    postman.setNextRequest(null);",
+              "    pm.execution.setNextRequest(null);",
               "}"
             ]
           }
