@@ -4,6 +4,10 @@
 
 > 검증 기준: 각 리소스의 정확한 scope (계정/리전/VPC/AZ/Subnet) + 트래픽 방향.
 > 자세한 코드: [msa-provisioning/terraform](https://github.com/KTCloud-CloudNative-Troica-Team/msa-provisioning/tree/main/terraform)
+>
+> **누적 변경**:
+> - R-59 (msa-provisioning PR #13): worker 사양 t3.medium → t3.large (Phase 5 메모리 대비)
+> - R-35 (d) / PR #22: NLB 에 Istio Gateway path 추가 — listener 80/443, target group istio-http-tg (30080) + istio-https-tg (30443), worker 3 attachment × 2 port, cluster-node-sg ingress 30080/30443 from `0.0.0.0/0`
 
 ---
 
@@ -16,18 +20,18 @@ flowchart TB
 
   subgraph VPC["☁️ VPC kt-cloud-vpc — 10.0.0.0/16"]
     IGW["Internet Gateway"]
-    NLB["NLB kt-cloud-nlb<br/>L4 TCP passthrough<br/>port 6443"]
+    NLB["NLB kt-cloud-nlb<br/>L4 TCP passthrough<br/>listener 6443/80/443<br/>R-35 (d) Istio Gateway + k8s API"]
 
     subgraph AZ2A["📍 ap-northeast-2a"]
       direction TB
       subgraph PubA["Public Subnet 10.0.1.0/24"]
         NATA["NAT Gateway 2a<br/>+ EIP"]
-        BastA["bastion-a<br/>t3.nano"]
+        BastA["bastion-a<br/>t3.nano<br/>auto public IP"]
       end
       subgraph PriA["Private Subnet 10.0.2.0/24"]
-        MA1["master-1"]
-        MA2["master-2"]
-        WA["worker-1"]
+        MA1["master-1<br/>t3.medium"]
+        MA2["master-2<br/>t3.medium"]
+        WA["worker-1<br/>t3.large"]
       end
     end
 
@@ -35,12 +39,12 @@ flowchart TB
       direction TB
       subgraph PubB["Public Subnet 10.0.3.0/24"]
         NATB["NAT Gateway 2b<br/>+ EIP"]
-        BastB["bastion-b<br/>t3.nano"]
+        BastB["bastion-b<br/>t3.nano<br/>auto public IP"]
       end
       subgraph PriB["Private Subnet 10.0.4.0/24"]
-        MB1["master-3"]
-        WB1["worker-2"]
-        WB2["worker-3"]
+        MB1["master-3<br/>t3.medium"]
+        WB1["worker-2<br/>t3.large"]
+        WB2["worker-3<br/>t3.large"]
       end
     end
   end
@@ -48,11 +52,15 @@ flowchart TB
   User -->|ssh :22| BastA
   User -->|ssh :22| BastB
   User -->|kubectl :6443| NLB
-  Internet -->|inbound 6443| NLB
+  Internet -->|"inbound 6443<br/>(k8s API)"| NLB
+  Internet -->|"inbound 80/443<br/>(Istio Gateway, PR #22)"| NLB
 
-  NLB -->|target| MA1
-  NLB -->|target| MA2
-  NLB -->|target| MB1
+  NLB -->|"6443 → master"| MA1
+  NLB -->|"6443 → master"| MA2
+  NLB -->|"6443 → master"| MB1
+  NLB -->|"80 → NodePort 30080<br/>443 → NodePort 30443<br/>(Istio ingressgateway)"| WA
+  NLB -->|"80 → NodePort 30080<br/>443 → NodePort 30443"| WB1
+  NLB -->|"80 → NodePort 30080<br/>443 → NodePort 30443"| WB2
 
   BastA -.ssh jump.-> MA1
   BastB -.ssh jump.-> MB1
@@ -95,9 +103,10 @@ flowchart TB
 **검증 포인트**:
 - VPC `10.0.0.0/16`, subnet 4개 (public/private × 2 AZ)
 - NLB는 양 AZ public subnet에 attach (subnet_mapping × 2 + EIP × 2)
+- **NLB listener 3개**: 6443 (k8s API → master target group) + 80 (HTTP) + 443 (HTTPS) → worker NodePort 30080/30443 → istio-ingressgateway (PR #22, R-35 (d) Istio Gateway 외부 진입 path)
 - private subnet의 egress는 각 AZ의 NAT 경유 → IGW (route 분리)
-- bastion만 public subnet (외부 SSH 진입)
-- master 3대 (2a:2 + 2b:1), worker 3대 (2a:1 + 2b:2)
+- bastion만 public subnet (외부 SSH 진입). 별도 bastion subnet 없음. `associate_public_ip_address=true` 의 auto public IP (EIP attach 아님)
+- master 3대 (2a:2 + 2b:1, t3.medium), worker 3대 (2a:1 + 2b:2, **t3.large** - R-59 메모리 상향)
 
 ---
 
@@ -216,8 +225,8 @@ flowchart TB
   end
 
   User -->|"22 SSH<br/>+ ICMP<br/>(my_ip /32)"| Bastion
-  Internet -->|"6443 from 0.0.0.0/0"| NLB
-  NLB -->|"6443"| ClusterNodes
+  Internet -->|"6443 from 0.0.0.0/0<br/>30080 from 0.0.0.0/0<br/>30443 from 0.0.0.0/0<br/>(PR #22)"| NLB
+  NLB -->|"6443 → master<br/>30080/30443 → worker"| ClusterNodes
   Bastion -->|"22 from bastion-sg"| ClusterNodes
   ClusterNodes -->|"self-ref ALL"| ClusterNodes
   ClusterNodes -->|"2049 NFS"| EFSMounts
@@ -242,8 +251,14 @@ flowchart TB
 
 **검증 포인트**:
 - `bastion-node-sg`: SSH 22 + ICMP only from `data.http.my_ip` (운영자 PC IP `/32`)
-- `cluster-node-sg`: 6443 from `0.0.0.0/0` (NLB 인입) + intra-VPC TCP/UDP/ICMP + SSH from `bastion-node-sg`
+- `cluster-node-sg` ingress:
+  - 6443 from `0.0.0.0/0` (NLB → master k8s API)
+  - **30080 from `0.0.0.0/0`** (PR #22, NLB → worker NodePort http) — `aws_security_group_rule.cluster_node_istio_http_ingress`
+  - **30443 from `0.0.0.0/0`** (PR #22, NLB → worker NodePort https) — `aws_security_group_rule.cluster_node_istio_https_ingress`
+  - intra-VPC TCP/UDP/ICMP from `10.0.0.0/16`
+  - SSH 22 from `bastion-node-sg`
 - `cluster-node-sg` self-ref (`aws_security_group_rule.cluster_node_self_ingress`): 같은 SG 멤버끼리 ALL protocol → Calico IP-in-IP / worker ↔ master 통신
+- **NLB source IP preservation** = true (default for instance target) → client public IP 가 worker 까지 그대로 → SG 의 30080/30443 `0.0.0.0/0` ingress 필수 (없으면 NLB listener 추가해도 SG drop)
 - `efs-sg`: NFS 2049 from `10.0.0.0/16` (intra-VPC)
 - `vpc-endpoint-sg`: HTTPS 443 from `10.0.0.0/16` (intra-VPC)
 
@@ -390,14 +405,15 @@ flowchart LR
 
   subgraph Temporary["♻️ 임시 (destroy-temp.sh 대상)<br/>월 ~$300"]
     direction TB
-    T1["EC2 × 8 (master 3 + worker 3 + bastion 2)"]
-    T2["EBS × 3 + Volume Attachment × 3"]
+    T1["EC2 × 8 (master 3 t3.medium + worker 3 t3.large + bastion 2 t3.nano)"]
+    T2["EBS: PVC dynamic provisioning (EBS CSI)"]
     T3["NAT Gateway × 2 + NAT EIP × 2"]
-    T4["NLB + Target Group + Listener + Attach × 3"]
+    T4["NLB + Target Group × 3 (k8s-api + istio-http + istio-https) + Listener × 3 (6443/80/443) + Attach × 9 (master 3 + worker 3 × 2 port)"]
     T5["NLB EIP × 2"]
     T6["VPC Endpoint × 3 (ecr.api + ecr.dkr + s3)"]
     T7["EFS File System + Mount Target × 2 + EFS SG"]
-    T8["local_file ansible_inventory"]
+    T8["SG rules × 3 (self-ingress + istio-http + istio-https)"]
+    T9["local_file ansible_inventory"]
   end
 
   subgraph Manual["✋ 수동 (Terraform 외부)<br/>월 ~$0.5"]
@@ -413,7 +429,7 @@ flowchart LR
   class Temporary temp
   class Manual manual
   class P1,P2,P3,P4,P5,P6,P7,P8,P9,P10 perm
-  class T1,T2,T3,T4,T5,T6,T7,T8 temp
+  class T1,T2,T3,T4,T5,T6,T7,T8,T9 temp
   class M1 manual
 ```
 
@@ -441,18 +457,18 @@ flowchart TB
   subgraph Region["📍 Region ap-northeast-2"]
     subgraph VPCBox["☁️ VPC kt-cloud-vpc 10.0.0.0/16"]
       IGW["IGW"]
-      NLB["NLB :6443"]
+      NLB["NLB<br/>:6443 (k8s API)<br/>:80/:443 (Istio)"]
       EFS["EFS"]
       VPCE["VPCE × 3<br/>ecr.api/dkr/s3"]
 
       subgraph A2A["📍 AZ 2a"]
         PubA["public 10.0.1.0/24<br/>NAT-a · bastion-a"]
-        PriA["private 10.0.2.0/24<br/>master-1/2 · worker-1"]
+        PriA["private 10.0.2.0/24<br/>master-1/2 (t3.medium)<br/>worker-1 (t3.large)"]
       end
 
       subgraph A2B["📍 AZ 2b"]
         PubB["public 10.0.3.0/24<br/>NAT-b · bastion-b"]
-        PriB["private 10.0.4.0/24<br/>master-3 · worker-2/3"]
+        PriB["private 10.0.4.0/24<br/>master-3 (t3.medium)<br/>worker-2/3 (t3.large)"]
       end
     end
   end
@@ -466,9 +482,9 @@ flowchart TB
   User -->|ssh| PubA
   User -->|ssh| PubB
   User -->|kubectl| NLB
-  Internet -->|6443| NLB
-  NLB --> PriA
-  NLB --> PriB
+  Internet -->|"6443 (k8s API)<br/>80/443 (Istio Gateway)"| NLB
+  NLB -->|"6443 → master<br/>30080/30443 → worker NodePort"| PriA
+  NLB -->|"6443 → master<br/>30080/30443 → worker NodePort"| PriB
   PubA --- IGW
   PubB --- IGW
   PriA -.via NAT.- PubA
@@ -511,15 +527,22 @@ flowchart TB
 
 ## 검증 체크리스트
 
-- ✅ VPC CIDR `10.0.0.0/16`, 4개 subnet CIDR 정확 (`.1/.2/.3/.4 .0/24`)
-- ✅ public subnet에 IGW 경유 / private subnet에 NAT 경유
+- ✅ VPC CIDR `10.0.0.0/16`, 4개 subnet CIDR 정확
+  - Public 2a `10.0.1.0/24` + Public 2b `10.0.3.0/24` (NAT Gateway + bastion)
+  - Private 2a `10.0.2.0/24` + Private 2b `10.0.4.0/24` (master/worker/EFS Mount Target/VPC Endpoint ENI)
+- ✅ public subnet에 IGW 경유 / private subnet에 NAT 경유 (route table 분리, RT × 3)
 - ✅ NLB는 subnet_mapping으로 양 AZ public subnet에 attach + 각 AZ EIP
-- ✅ bastion은 public subnet (`associate_public_ip_address=true`)
+- ✅ **NLB listener × 3** = 6443 (k8s API → master target group) + 80 (HTTP → istio-http-tg) + 443 (HTTPS → istio-https-tg) — R-35 (d) / PR #22
+- ✅ **NLB target group × 3** = k8s-api-tg (6443, master × 3) + istio-http-tg (30080, worker × 3) + istio-https-tg (30443, worker × 3) — attachment 9 개
+- ✅ bastion은 public subnet (`associate_public_ip_address=true`, EIP attach 아님). 별도 bastion subnet 없음
 - ✅ master/worker는 private subnet + instance profile (`ktcloud-node-profile`)
+  - master 3 × t3.medium (control plane only)
+  - worker 3 × **t3.large** (R-59 메모리 상향)
 - ✅ EFS mount target은 private subnet ENI (양 AZ)
 - ✅ VPC Endpoint Interface (ecr.api/ecr.dkr)는 private subnet ENI, private DNS enabled
 - ✅ VPC Endpoint Gateway (s3)는 route_table_ids 매핑 (private RT × 2)
 - ✅ SG 4개 + 의도된 ingress rule 명시
+  - `cluster-node-sg` 에 **30080 + 30443 from `0.0.0.0/0`** (PR #22, NLB source IP preservation 대응)
 - ✅ IAM OIDC + Role trust policy = `repo:.../msa-*:ref:refs/heads/main`
 - ✅ ECR push (CI) vs ECR pull (kubelet) — 다른 경로, 분리 표현
 - ✅ 영구/임시/수동 자원 분류 정확
