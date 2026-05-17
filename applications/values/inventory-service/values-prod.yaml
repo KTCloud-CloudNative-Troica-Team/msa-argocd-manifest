@@ -1,5 +1,5 @@
 image:
-  tag: main-bdd97d0
+  tag: main-e7bf3df
 replicaCount: 3
 springProfilesActive: "prod"
 hpa:
