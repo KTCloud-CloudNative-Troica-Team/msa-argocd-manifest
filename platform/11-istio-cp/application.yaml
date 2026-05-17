@@ -1,34 +1,28 @@
-# R-03 / R-35 (d): Istio control plane (istiod) + Ingress Gateway.
+# R-03 / R-35 (d): Istio control plane (istiod) — Ingress Gateway 는 분리됨.
 #
-# Sync Wave -2: istio-base (-5) 와 istio-gateway (-3) 다음에 sync.
+# Sync Wave -2: istio-base (-5) + istio-gateway namespace label (-3) 다음에 sync.
 #
-# 왜 -2 인가 (이전 -4 → -2 로 변경):
-#   istio-ingressgateway chart 의 templates/deployment.yaml 의 image 가 hardcoded
-#   `image: auto` (placeholder). istiod 의 sidecar inject mutating webhook 가 pod
-#   creation 시 실 image (docker.io/istio/proxyv2:1.23.3) 로 mutate. 단 webhook 의
-#   namespaceSelector 가 `istio-injection: enabled` 필수 — istio-system namespace
-#   에 그 label 있어야 ingressgateway 첫 pod 가 image mutate 됨.
+# 본 Application 의 책임 변경 — 이전엔 istiod + gateway chart multi-source.
+# 매 cluster destroy + apply 마다 ingressgateway pod 의 ImagePullBackOff 가
+# 재발한 진짜 root cause = 같은 Application 안 두 chart 의 race:
+#   1. istiod Deployment 생성 (pod 아직 Ready X)
+#   2. gateway chart 의 ingressgateway Deployment 동시 생성 → 첫 pod 시도
+#   3. sidecar inject MutatingWebhookConfiguration 호출 → istiod endpoint
+#      비어 있음 → webhook fail (failurePolicy=Fail 의 retry 또는 skip)
+#   4. image `auto` 인 채 stale pod 생성되면 ImagePullBackOff lock
+#   5. istiod 이후 Ready 되어도 ingressgateway template 불변 → stale pod 갱신 X
 #
-#   istio-system 의 label 추가 = platform/12-istio-gateway/manifests/namespace-injection.yaml
-#   (istio-gateway Application, Wave -3). 따라서 istio-cp 가 Wave -4 (-3 이전) 이면:
-#     1. istio-cp sync → ingressgateway Deployment 생성 → 첫 pod 시도
-#     2. 이 시점 istio-system 에 inject label 아직 없음 → webhook reject → image 'auto' 그대로
-#     3. ImagePullBackOff (docker.io/library/auto 존재 X)
-#     4. 그 후 istio-gateway sync (Wave -3) → namespace label 추가 → 단 stale pod
-#        은 그대로 (Deployment template 변경 없으니 재배포 안 함)
+# PR #111 (namespace inject label) + PR #117 (Wave -4 → -2) 은 Application
+# 부모 ordering 만 해결. 같은 Application 안 race 는 못 다룸.
 #
-#   해결: istio-cp 를 Wave -2 (istio-gateway -3 다음) 으로 미루기. namespace label
-#   먼저 등록 → istio-cp 의 ingressgateway 첫 pod 가 label 있는 상태로 생성 →
-#   webhook 가 image 정상 mutate.
+# 영구 해결 = ingressgateway 를 platform/13-istio-ingressgateway/ 로 분리
+# (Wave -1). istio-cp 가 istiod 만 install + Healthy 검증 후 다음 wave 진행
+# → 13 에서 ingressgateway sync 시 webhook endpoint 정상 → image mutate 정상.
 #
-#   istio-gateway 의 다른 자원 (Gateway / VirtualService / PeerAuthentication /
-#   DestinationRule) 은 CRD (istio-base Wave -5) 만 있으면 spec 등록 가능 — istiod
-#   pod 안 떠도 무관.
+# 본 Application 은 이제 istiod chart 만 single-source.
 #
-# 본 PoC 단계 — PeerAuthentication STRICT 로 클러스터 전체 mTLS 강제 (별도 PeerAuthentication
-# 매니페스트는 platform/11-istio-cp/manifests/ 에 추가 가능). market-{dev,prod}
-# namespace 의 sidecar 자동 주입 label 은 R-49 NetworkPolicy / 각 서비스 Deployment
-# annotation 으로 이미 처리됨.
+# 본 PoC 단계 — PeerAuthentication STRICT 로 클러스터 전체 mTLS 강제
+# (별도 PeerAuthentication 매니페스트는 platform/12-istio-gateway/manifests/ 에).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -40,86 +34,36 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
-  sources:
-    - chart: istiod
-      repoURL: https://istio-release.storage.googleapis.com/charts
-      targetRevision: 1.23.3
-      helm:
-        releaseName: istiod
-        values: |
-          # PoC 규모 단일 replica
-          pilot:
-            replicaCount: 1
-            resources:
-              requests:
-                cpu: 200m
-                memory: 512Mi
-              limits:
-                memory: 1Gi
-          # Telemetry — Prometheus scrape 가능하도록 ServiceMonitor 생성
-          telemetry:
-            enabled: true
-            v2:
-              enabled: true
-              prometheus:
-                enabled: true
-          # 모든 신규 sidecar 가 디폴트로 mTLS STRICT 모드 작동
-          meshConfig:
-            defaultConfig:
-              proxyMetadata: {}
-              tracing:
-                sampling: 100.0
-            enableTracing: true
-    - chart: gateway
-      repoURL: https://istio-release.storage.googleapis.com/charts
-      targetRevision: 1.23.3
-      helm:
-        releaseName: istio-ingressgateway
-        # Istio gateway chart 1.23 의 values.yaml 의 주석 (코드 직접 확인):
-        #   "Users should NOT set .defaults explicitly, but rather directly
-        #    set the fields internally."
-        # 즉 사용자는 defaults: wrapper 없이 service.type 처럼 직접 작성해야 함.
-        # `defaults:` 는 helm chart 의 내부 workaround — 사용자 측 사용 안 함.
-        # 첫 사이클의 `defaults:` wrap fix (PR #88) 가 잘못된 방향. 정정.
-        #
-        # `skipSchemaValidation: true` 는 ArgoCD 의 strict schema 검증을 무시.
-        # helm CLI 자체는 두 패턴 모두 받지만 ArgoCD 의 helm 측이 더 strict 라
-        # skip 필요. (helm 3.13+ 의 --skip-schema-validation 와 동일)
-        skipSchemaValidation: true
-        values: |
-          # istio gateway chart 1.23.3 의 templates/deployment.yaml 의 image field 는
-          # hardcoded `image: auto` (chart values 에서 받지 않는 placeholder). sidecar
-          # inject mutating webhook 가 실 image (docker.io/istio/proxyv2:1.23.3) 로
-          # mutate 하도록 설계. 따라서 helm values 에 image 명시해도 무시됨.
-          # 해결 위치: platform/12-istio-gateway/manifests/namespace-injection.yaml 에
-          # istio-system namespace 의 `istio-injection: enabled` label 추가 →
-          # webhook 가 ingressgateway 의 image 정상 mutate.
-          # 외부 진입점 — NLB target. PoC 단계 NodePort 30080/30443.
-          service:
-            type: NodePort
-            ports:
-              - name: status-port
-                port: 15021
-                targetPort: 15021
-                nodePort: 30021
-              - name: http2
-                port: 80
-                targetPort: 80
-                nodePort: 30080
-              - name: https
-                port: 443
-                targetPort: 443
-                nodePort: 30443
+  source:
+    chart: istiod
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    targetRevision: 1.23.3
+    helm:
+      releaseName: istiod
+      values: |
+        # PoC 규모 단일 replica
+        pilot:
           replicaCount: 1
-          # chart 의 autoscaling default = enabled. PoC 규모라 disable.
-          autoscaling:
-            enabled: false
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 200m
+              memory: 512Mi
             limits:
-              memory: 256Mi
+              memory: 1Gi
+        # Telemetry — Prometheus scrape 가능하도록 ServiceMonitor 생성
+        telemetry:
+          enabled: true
+          v2:
+            enabled: true
+            prometheus:
+              enabled: true
+        # 모든 신규 sidecar 가 디폴트로 mTLS STRICT 모드 작동
+        meshConfig:
+          defaultConfig:
+            proxyMetadata: {}
+            tracing:
+              sampling: 100.0
+          enableTracing: true
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system

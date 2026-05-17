@@ -1,0 +1,108 @@
+# R-03 / R-35 (d): Istio Ingress Gateway — istio-cp 에서 분리된 별도 Application.
+#
+# Sync Wave -1: istio-cp (-2) 가 istiod 만 install + Ready 된 후 sync.
+#
+# 왜 분리하는가 (이전 12 사이클 동안 매번 재발한 ImagePullBackOff 의 진짜 root cause):
+#   istio chart 의 gateway 측 templates/deployment.yaml 의 image = hardcoded
+#   `auto` (placeholder). istiod 의 sidecar inject MutatingWebhookConfiguration
+#   가 pod 생성 admission 시점에 실 image (docker.io/istio/proxyv2:1.23.3) 로
+#   mutate.
+#
+#   기존 platform/11-istio-cp/application.yaml 가 multi-source helm 으로
+#   istiod chart + gateway chart 를 한 Application 안에 묶음. ArgoCD 가 두
+#   chart 를 같은 sync wave (-2) 안에서 동시 apply →
+#     1. istiod Deployment 생성 (단 pod 아직 Ready 아님)
+#     2. ingressgateway Deployment 생성 → 첫 pod 시도
+#     3. webhook call → istiod endpoint 비어 있거나 connection refused
+#     4. failurePolicy=Fail 의 retry 또는 일부 case 에서 webhook skip →
+#        image `auto` 인 채 stale pod → ImagePullBackOff lock
+#     5. 이후 istiod Ready 되어도 ingressgateway Deployment template 불변
+#        → stale pod 갱신 X
+#
+#   PR #111 (namespace inject label) + PR #117 (istio-cp Wave -4 → -2) 가
+#   해결한 layer = "Application 부모 ordering" 만. **같은 Application 안의
+#   두 chart 간 race** 는 못 다룸. 그래서 destroy + apply 마다 같은 issue
+#   반복.
+#
+#   영구 해결 = ingressgateway 를 별도 Application (Wave -1) 으로 분리 →
+#   istio-cp (Wave -2) 의 istiod 가 Healthy 된 후에야 13-istio-ingressgateway
+#   sync 시작 → webhook endpoint 정상 → image mutate 정상 → Running.
+#   매니페스트 정의 자체로 race 제거.
+#
+# 다른 코드 영향:
+#   - platform/12-istio-gateway/manifests/namespace-injection.yaml (Wave -3) 의
+#     istio-system inject label 이 이 시점에 이미 존재 → webhook 가 mutate 수행
+#   - platform/12-istio-gateway 의 Gateway / VirtualService 등은 CRD 만 필요
+#     (istio-base Wave -5) — istiod / ingressgateway pod 안 떠도 spec 등록 가능
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-ingressgateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    chart: gateway
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    targetRevision: 1.23.3
+    helm:
+      releaseName: istio-ingressgateway
+      # Istio gateway chart 1.23 의 values.yaml 의 주석 (코드 직접 확인):
+      #   "Users should NOT set .defaults explicitly, but rather directly
+      #    set the fields internally."
+      # 즉 사용자는 defaults: wrapper 없이 service.type 처럼 직접 작성.
+      #
+      # `skipSchemaValidation: true` 는 ArgoCD 의 strict schema 검증 무시.
+      # helm CLI 자체는 두 패턴 모두 받지만 ArgoCD 의 helm 측이 더 strict.
+      skipSchemaValidation: true
+      values: |
+        # istio gateway chart 1.23.3 의 templates/deployment.yaml 의 image field 는
+        # hardcoded `image: auto` (chart values 에서 받지 않는 placeholder). sidecar
+        # inject mutating webhook 가 실 image (docker.io/istio/proxyv2:1.23.3) 로
+        # mutate 하도록 설계. 따라서 helm values 에 image 명시해도 무시됨.
+        #
+        # webhook 정상 작동 전제 = istiod pod Ready + istio-system namespace 의
+        # `istio-injection: enabled` label. 본 Application 의 Wave -1 + istio-cp
+        # Wave -2 의 ordering + 12-istio-gateway Wave -3 의 namespace label 로
+        # 두 조건 모두 충족.
+        #
+        # 외부 진입점 — NLB target. PoC 단계 NodePort 30080/30443.
+        service:
+          type: NodePort
+          ports:
+            - name: status-port
+              port: 15021
+              targetPort: 15021
+              nodePort: 30021
+            - name: http2
+              port: 80
+              targetPort: 80
+              nodePort: 30080
+            - name: https
+              port: 443
+              targetPort: 443
+              nodePort: 30443
+        replicaCount: 1
+        # chart 의 autoscaling default = enabled. PoC 규모라 disable.
+        autoscaling:
+          enabled: false
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
