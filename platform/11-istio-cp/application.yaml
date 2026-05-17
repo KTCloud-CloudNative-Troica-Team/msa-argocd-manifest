@@ -1,5 +1,29 @@
 # R-03 / R-35 (d): Istio control plane (istiod) + Ingress Gateway.
-# Sync Wave -4: istio-base CRD 설치 후.
+#
+# Sync Wave -2: istio-base (-5) 와 istio-gateway (-3) 다음에 sync.
+#
+# 왜 -2 인가 (이전 -4 → -2 로 변경):
+#   istio-ingressgateway chart 의 templates/deployment.yaml 의 image 가 hardcoded
+#   `image: auto` (placeholder). istiod 의 sidecar inject mutating webhook 가 pod
+#   creation 시 실 image (docker.io/istio/proxyv2:1.23.3) 로 mutate. 단 webhook 의
+#   namespaceSelector 가 `istio-injection: enabled` 필수 — istio-system namespace
+#   에 그 label 있어야 ingressgateway 첫 pod 가 image mutate 됨.
+#
+#   istio-system 의 label 추가 = platform/12-istio-gateway/manifests/namespace-injection.yaml
+#   (istio-gateway Application, Wave -3). 따라서 istio-cp 가 Wave -4 (-3 이전) 이면:
+#     1. istio-cp sync → ingressgateway Deployment 생성 → 첫 pod 시도
+#     2. 이 시점 istio-system 에 inject label 아직 없음 → webhook reject → image 'auto' 그대로
+#     3. ImagePullBackOff (docker.io/library/auto 존재 X)
+#     4. 그 후 istio-gateway sync (Wave -3) → namespace label 추가 → 단 stale pod
+#        은 그대로 (Deployment template 변경 없으니 재배포 안 함)
+#
+#   해결: istio-cp 를 Wave -2 (istio-gateway -3 다음) 으로 미루기. namespace label
+#   먼저 등록 → istio-cp 의 ingressgateway 첫 pod 가 label 있는 상태로 생성 →
+#   webhook 가 image 정상 mutate.
+#
+#   istio-gateway 의 다른 자원 (Gateway / VirtualService / PeerAuthentication /
+#   DestinationRule) 은 CRD (istio-base Wave -5) 만 있으면 spec 등록 가능 — istiod
+#   pod 안 떠도 무관.
 #
 # 본 PoC 단계 — PeerAuthentication STRICT 로 클러스터 전체 mTLS 강제 (별도 PeerAuthentication
 # 매니페스트는 platform/11-istio-cp/manifests/ 에 추가 가능). market-{dev,prod}
@@ -11,7 +35,7 @@ metadata:
   name: istio-cp
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-4"
+    argocd.argoproj.io/sync-wave: "-2"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
