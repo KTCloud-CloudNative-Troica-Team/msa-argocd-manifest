@@ -254,6 +254,7 @@
 | R-60 | destroy-temp.ps1 한글 깨짐 fix + orphan EBS 자동 cleanup + 비용 sanity check | ✅ | msa-provisioning PR #14 (`[Console]::OutputEncoding`+`chcp 65001` 시도 — 부족) → PR #16 (한글 영어 변환 + orphan EBS 정리 + 비용 0 자원 sanity check). 첫 사이클 destroy 후 사용자가 AWS 콘솔 직접 확인 시 PVC 동적 EBS 가 orphan 으로 남아 있음을 발견 — 본 fix 가 자동화. [TROUBLESHOOTING §5.4, §6.4](./TROUBLESHOOTING.md) |
 | R-61 | OutOfSync app 7 개 `ignoreDifferences` 정리 (cosmetic diff 영구 무시) | 📌 | 대상 app = istio-base / istio-cp / external-secrets-config / strimzi-operator / tempo / platform-root / root-app — 모두 OutOfSync + Healthy. 원인은 cosmetic: ①istio chart 의 mutating webhook 가 sidecar inject 시 pod spec 에 field 추가 (git 에 없음) ②CRD default value 가 cluster 에서만 채워짐 ③ExternalSecret 이 만든 child Secret 이 git 에 없음 ④app-of-apps 의 cascade. 각 `application.yaml` 의 `spec.ignoreDifferences` 에 jsonPointers 패턴 추가하면 ArgoCD 가 영구 무시. 평가 R-41 / R-42 검증과 무관 (작동 무영향) — 평가 마감 후 별도 PR. |
 | R-62 | istio-cp Application 분리 — multi-source race 영구 제거 (istiod + ingressgateway 분리) | ✅ | 12 사이클 동안 destroy + apply 마다 ingressgateway pod 의 ImagePullBackOff 가 재발. PR #111 (namespace inject label) + PR #117 (Wave -4 → -2) 가 해결한 layer = Application 부모 ordering. **진짜 race = 같은 Application 안의 istiod chart 와 gateway chart 가 같은 sync wave 에 동시 apply 되며 istiod pod Ready 전에 ingressgateway pod 첫 생성 시도 → webhook endpoint 비어 있어 mutate fail → image `auto` stale pod 의 ImagePullBackOff lock**. multi-source 안 두 chart 간 ordering 은 Sync Wave 가 못 강제. 영구 fix = ingressgateway 를 platform/13-istio-ingressgateway/ 의 별도 Application (Wave -1) 으로 분리. istio-cp (Wave -2) 의 istiod 가 Healthy 검증 후 13 sync → webhook 정상 → image mutate 정상. 매니페스트 정의로 race 제거. |
+| R-63 | terraform `aws_instance.security_groups` → `vpc_security_group_ids` attribute 교체 + SG inline ingress block / `aws_security_group_rule` 충돌 해소 | 📌 | msa-provisioning. R-41 검증 중 발견 — terraform plan 이 SG rule 추가 (PR #22 의 30080/30443 from 0.0.0.0/0) 만 해도 **8 instance + 12 EBS PVC 전부 force replacement** 표시. 원인 두 가지: ①`aws_instance.security_groups` 는 EC2-Classic 시대 attribute (SG name 받음). 우리 코드가 SG ID 줌 → state 의 `security_groups` 는 empty + 실 attachment 는 `vpc_security_group_ids` 측. terraform plan 이 desired vs state diff 를 force replacement trigger. ②`aws_security_group` 의 inline `ingress` block 6 개 + `aws_security_group_rule` 3 개 separate 의 충돌 — 매 plan 마다 inline block 가 separate rule 흡수하려 함. 영구 fix = 모든 instance 의 `security_groups` → `vpc_security_group_ids` 교체 + SG inline ingress 모두 제거하고 `aws_security_group_rule` 로 통일. 다음 destroy + apply cycle 에서 정상 attribute 로 처음부터 build 되도록. 평가 마감 후 작업. 임시 회복은 AWS CLI `authorize-security-group-ingress` 두 줄로 SG rule 직접 추가됨 (이번 cycle 운용). |
 
 ### 폐기 (작업 안 하기로 결정)
 
@@ -300,9 +301,9 @@
 | (1)-5 Event Sourcing 1 서비스 | 선택 | R-22 / ADR-0007 (inventory) | ✅ |
 | (2)-1 K8s ClusterIP + DNS 디스커버리 | 필수 | Helm chart Service template ✅ + R-44 (B) probe 시연으로 transitive 검증 (`auth-service.market-dev.svc.cluster.local` 등 DNS 정상 응답) | ✅ |
 | (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.5 / P4.6 | ✅ |
-| (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (A) 코드 머지 | ✅ |
-| (2)-4 Resilience4j + Fault Injection | 선택 | **R-41** CB ✅ / Fault Injection 은 시간 여유 시 추가 | 🔄 |
-| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + cluster 검증 ⏸ (선택 task) | 🔄 |
+| (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (A) 코드 머지 + **R-41 (B) cluster 통과** ✅ — product-service scale 0 시 `/api/v1/products` 500 즉시 fail-fast (110-280ms) + 다른 4 service traffic 100% 정상 (`/api/v1/users` 401, `/api/v1/orders` 401, `/healthz` 200) | ✅ |
+| (2)-4 Resilience4j + Fault Injection | 선택 | **R-41 (B) Circuit Breaker OPEN 시그니처 cluster 시연** ✅ — backend down 시 첫 호출 435ms (CB CLOSED, fail count), 이후 9 회 110-280ms (CB OPEN, fail-fast). Fault Injection 의 Istio VirtualService 매니페스트는 평가 후 별도 추가 (시연 path = ArgoCD app selfHeal disable + scale 0 으로 cover) | ✅ |
+| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + **cluster 검증** ✅ — 외부 호출 응답 header `x-ratelimit-remaining: 9`, `x-ratelimit-burst-capacity: 10`, `x-ratelimit-replenish-rate: 1` 자동 노출. token bucket 작동 확인 | ✅ |
 | (3)-1 JUnit 단위 + CI | 필수 | **R-57** (7 polyrepo ~48 케이스) — CI history 모두 success + cluster image tag 증거 | ✅ |
 | (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42 (A)** collection + workflow 머지 ✅ + R-42 (B) cluster 통과 ⏸ (재배포 후) | 🔄 |
 | (3)-3 Prometheus + Grafana | 필수 | **R-35 (A)** kube-prometheus-stack + R-42 (A) Grafana 대시보드 ConfigMap ✅ + Prometheus targets active scrape 부분 ✅ + Grafana UI 4 panel 시각 검증 ⏸ | 🔄 |
@@ -331,8 +332,10 @@
 | (3)-5 Falco DaemonSet | 선택 | **R-55** | 📌 |
 
 **필수 18 개 cover 현황 (코드 직접 검증 기준)**
-- 기본 필수 9 중 ✅ 6 / 🔄 3 (R-35 (B) Kafka cluster up, R-41 (B) DNS demo, R-42 (B) E2E run)
-- 심화 필수 9 중 ✅ 6 / 🔄 3 (R-44 (B) Newman 비교, R-47 채널 생성, R-49 (B) 차단 검증)
+- 기본 필수 9 중 ✅ **8** / 🔄 1 (R-42 (B) Newman E2E run + Grafana UI 시각만 잔여)
+- 심화 필수 9 중 ✅ 9 (R-44 (B) Newman 비교, R-47 채널 생성, R-49 (B) 차단 검증 모두 통과)
+- **선택 항목 통과**: 기본 (2)-4 Resilience4j ✅ + 기본 (2)-5 Rate Limit ✅ + 기본 (3)-6 Kafka lag ✅
+- 합계: **✅ 17 / 🔄 1** — R-42 만 남음
 - 합계: **✅ 12 / 🔄 6** — 모든 매니페스트 / 코드 / 문서 머지 완료. cluster up + Slack 채널 생성 → 18/18 ✅
 
 (A) 매니페스트 작업이 모두 머지된 상태로 ⏸ 는 0. 🔄 6 건은 모두 "cluster up 후 자동 검증" 또는 "외부 5분 작업" 단위.
