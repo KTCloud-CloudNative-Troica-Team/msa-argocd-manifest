@@ -184,13 +184,13 @@
 | R-03 (B) | Istio mesh 실 작동 검증 | ✅ | 심화 (1)-2 (필수) | 2026-05-17 통과: Istio CP 2 pod + sidecar 8 pod 모두 inject (`[app istio-proxy]`) + mesh-wide PA STRICT + 6 service metrics-override (PERMISSIVE) + Gateway+VirtualService + 3 ns inject label (istio-system 포함 — PR #111) |
 | R-25 | JWT secret 정식 외부화 (ExternalSecrets) | ✅ | 심화 (3)-2 (필수) | 2026-05-17 통과: 20 ExternalSecret 모두 SecretSynced=True. auth-jwt-secret (market-{dev,prod}) + auth-service-secrets 의 JWT_SECRET 가 auth-service / api-gateway pod 의 envFrom secretRef 로 정상 주입 |
 | R-33 | 6×2 Secret + ConfigMap 실값 | ✅ | 심화 (3)-2 (필수) | 2026-05-17 통과: 12 ConfigMap (6 service × 2 env) + ExternalSecret 12 동기화. pod env 의 실 ENV 매핑 정상 (`AUTH_DB_HOST=auth-db-rw.databases.svc...`, `REDIS_HOST=rfr-*-redis.redis.svc...`, `JWT_SECRET=<실값>`). envFrom secretRef + configMapRef 동시 적용 |
-| R-41 (B) | K8s 디스커버리 + 장애 격리 실 검증 | ⏸ | 기본 (2)-1·(2)-3 (필수) | (1) ClusterIP+DNS `kubectl exec` + nslookup + curl (2) Fallback 시연 (inventory Pod down → 빈 list 반환). **선택 검증 (기본 (2)-3 의 코드 측은 (A) 에서 ✅)** |
-| R-42 (B) | Postman + Newman E2E + Prometheus + Grafana 실 통과 | ⏸ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | **남은 마지막 R**. Part 1 (Newman E2E): long-running pod + image pull 5분 wait + `-c <container>` exec 패턴. Part 2 (Grafana): port-forward + 4 panel 시각. Prometheus targets active 부분 통과 (2026-05-17). cluster 재배포 후 진행 |
+| R-41 (B) | K8s 디스커버리 + 장애 격리 실 검증 | ✅ | 기본 (2)-1·(2)-3 (필수) + (2)-4·(2)-5 (선택) | 2026-05-17 통과: product-service scale 0 → `/api/v1/products` 500 즉시 fail-fast (110-280ms = Circuit Breaker OPEN signature) + 다른 4 service 100% 격리 (users 401 + ratelimit / orders 401 / healthz 200). selfHeal disable 트릭으로 fault 유지 + 시연 후 GitOps 복원. `x-ratelimit-*` header 자동 검증 |
+| R-42 (B) | Postman + Newman E2E + Prometheus + Grafana 실 통과 | ✅ | 기본 (3)-2·(3)-3 (필수) + (3)-5 (선택) | 2026-05-17 통과: **Newman workflow #5/#6 run 5/5 시나리오 PASS** (signup 200 + signin 200/JWT + products 200 + inventories 200 + JWT check 200, skip 2). collection skip 로직 fix (PR #130 `pm.execution.setNextRequest` + step 4 측 조건부 jump). Grafana built-in 4 dashboard (Kubernetes Compute Resources / Node Exporter / Prometheus Overview) + Prometheus Targets active scrape 시각 통과 |
 | R-44 (B) | 독립 배포 E2E 무영향 검증 | ✅ | 심화 (1)-1 (필수) | 2026-05-17 통과: product-service rolling restart 30 초 동안 다른 4 service (auth/user/order/inventory) traffic 100% 정상 (5-20ms). product-service 만 endpoint pod IP 변경, 다른 service endpoint 그대로 |
 | R-47 (B) | AlertManager `#security-report` 라우팅 실 배포 | ✅ | 심화 (2)-3 (필수) | 2026-05-17 통과 (PR #114 들여쓰기 fix 후): manual fire (severity=security) → `:rotating_light: ManualSecurityTest` #security-report 도착. severity=warning → #alerts 도착. ADR-0010 채널 분기 실 작동 |
 | R-48 (B) | RBAC 실 작동 검증 (`kubectl auth can-i`) | ✅ | 심화 (3)-1·(3)-2 (필수) | 2026-05-17 통과: developer (Allow 4 + Deny 4) / operator (Allow 4 + Deny 5) / sre (Allow 4) 12 명령 모두 기대대로. ServiceAccount RBAC = 진정한 최소 권한 (rules=[]) |
 | R-49 (B) | NetworkPolicy 통신 차단 검증 | ✅ | 심화 (3)-3 (필수) | 2026-05-17 통과: ALLOW (api-gateway label → auth-service:9005, 0.71s) + DENY (product-service label → auth-service:9005, 5s timeout) + DENY (port mismatch user-service:8100, 5s timeout). label-level + port-level 분리 |
-| R-50 (B) | RequestRateLimiter 실 작동 검증 | ⏸ | 기본 (2)-5 (선택) | **선택 task**. Redis 정상 작동 검증된 상태이므로 runbook (`docs/demo/r-50-rate-limit-verification.md`) 실행 시 즉시 통과 가능. 평가 cover 가 아니므로 시간 여유 시 |
+| R-50 (B) | RequestRateLimiter 실 작동 검증 | 📌 Phase 6 (선택) | 기본 (2)-5 (선택) | **Phase 6 으로 이동**. anonymous fallback 측 key 가 매 호출 다른 bucket 측 — burst 도달 시연 미통과. 단 `x-ratelimit-*` header 자동 노출 + token bucket 차감 자체 확인됨 = 매니페스트 + filter 작동 증명. 자세히 [TROUBLESHOOTING §7.15](./TROUBLESHOOTING.md). 평가 (선택) 라 필수 X |
 
 ### (C) 외부 수동 셋업
 
@@ -204,10 +204,11 @@
 
 > **목적**: 평가 **선택 항목** 으로 발표 임팩트 강화 + 운영 단계 진입을 위한 정리 작업 + 최종 발표 자료. 필수 항목은 Phase 5 종료 시점에 이미 cover 된 상태.
 
-### (A) 심화 선택 평가요소 (발표 임팩트)
+### (A) 선택 평가요소 (발표 임팩트)
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
+| R-50 (B) | RequestRateLimiter burst 도달 시연 (anonymous fallback key 정정) | 📌 | 기본 (2)-5 (선택) | anonymous fallback path 측 `X-Forwarded-For` header 사용 측 변경 시도. 자세히 [TROUBLESHOOTING §7.15](./TROUBLESHOOTING.md). 매니페스트 + filter 작동은 이미 확인 |
 | R-51 | KEDA (Kafka lag 기반 ScaledObject) | 📌 | 심화 (1)-4 (선택) | inventory consumer 가 `order.pending` lag 임계 도달 시 자동 확장 |
 | R-52 | ArgoCD Rollouts Canary | 📌 | 심화 (1)-5 (선택) | order-service 등 1 서비스 단계별 분기 + 자동 롤백 |
 | R-53 | OPA Gatekeeper | 📌 | 심화 (2)-5 (선택) | ConstraintTemplate (`runAsNonRoot` / `readOnlyRootFilesystem`) Namespace 전체 강제 |
@@ -252,11 +253,11 @@
 | R-38 | common-libs `QuerydslConfig` final → Spring CGLIB proxy 실패 | ✅ | `fix/r-38-kotlin-spring-plugin` + v0.3.1 publish + 6 서비스 의존성 bump. [TROUBLESHOOTING §1.7](./TROUBLESHOOTING.md) |
 | R-59 | Worker 노드 사양 t3.medium → t3.large (Phase 5 메모리 대비) | ✅ | msa-provisioning PR #13. master 3 t3.medium 유지 (control plane only) + worker 3 t3.large. 첫 사이클 디버깅에서 worker 4 GB 부족으로 CoreDNS 가 worker 우선 못 뜨고 service pod schedule 실패 관찰. 비용 영향: $0.156/h 증가 (1주일 +$26). [TROUBLESHOOTING §5.5](./TROUBLESHOOTING.md) |
 | R-60 | destroy-temp.ps1 한글 깨짐 fix + orphan EBS 자동 cleanup + 비용 sanity check | ✅ | msa-provisioning PR #14 (`[Console]::OutputEncoding`+`chcp 65001` 시도 — 부족) → PR #16 (한글 영어 변환 + orphan EBS 정리 + 비용 0 자원 sanity check). 첫 사이클 destroy 후 사용자가 AWS 콘솔 직접 확인 시 PVC 동적 EBS 가 orphan 으로 남아 있음을 발견 — 본 fix 가 자동화. [TROUBLESHOOTING §5.4, §6.4](./TROUBLESHOOTING.md) |
-| R-61 | OutOfSync app 7 개 `ignoreDifferences` 정리 (cosmetic diff 영구 무시) | 📌 | 대상 app = istio-base / istio-cp / external-secrets-config / strimzi-operator / tempo / platform-root / root-app — 모두 OutOfSync + Healthy. 원인은 cosmetic: ①istio chart 의 mutating webhook 가 sidecar inject 시 pod spec 에 field 추가 (git 에 없음) ②CRD default value 가 cluster 에서만 채워짐 ③ExternalSecret 이 만든 child Secret 이 git 에 없음 ④app-of-apps 의 cascade. 각 `application.yaml` 의 `spec.ignoreDifferences` 에 jsonPointers 패턴 추가하면 ArgoCD 가 영구 무시. 평가 R-41 / R-42 검증과 무관 (작동 무영향) — 평가 마감 후 별도 PR. |
-| R-62 | istio-cp Application 분리 — multi-source race 영구 제거 (istiod + ingressgateway 분리) | ✅ | 12 사이클 동안 destroy + apply 마다 ingressgateway pod 의 ImagePullBackOff 가 재발. PR #111 (namespace inject label) + PR #117 (Wave -4 → -2) 가 해결한 layer = Application 부모 ordering. **진짜 race = 같은 Application 안의 istiod chart 와 gateway chart 가 같은 sync wave 에 동시 apply 되며 istiod pod Ready 전에 ingressgateway pod 첫 생성 시도 → webhook endpoint 비어 있어 mutate fail → image `auto` stale pod 의 ImagePullBackOff lock**. multi-source 안 두 chart 간 ordering 은 Sync Wave 가 못 강제. 영구 fix = ingressgateway 를 platform/13-istio-ingressgateway/ 의 별도 Application (Wave -1) 으로 분리. istio-cp (Wave -2) 의 istiod 가 Healthy 검증 후 13 sync → webhook 정상 → image mutate 정상. 매니페스트 정의로 race 제거. |
-| R-63 | terraform `aws_instance.security_groups` → `vpc_security_group_ids` attribute 교체 + SG inline ingress block / `aws_security_group_rule` 충돌 해소 | 📌 | msa-provisioning. R-41 검증 중 발견 — terraform plan 이 SG rule 추가 (PR #22 의 30080/30443 from 0.0.0.0/0) 만 해도 **8 instance + 12 EBS PVC 전부 force replacement** 표시. 원인 두 가지: ①`aws_instance.security_groups` 는 EC2-Classic 시대 attribute (SG name 받음). 우리 코드가 SG ID 줌 → state 의 `security_groups` 는 empty + 실 attachment 는 `vpc_security_group_ids` 측. terraform plan 이 desired vs state diff 를 force replacement trigger. ②`aws_security_group` 의 inline `ingress` block 6 개 + `aws_security_group_rule` 3 개 separate 의 충돌 — 매 plan 마다 inline block 가 separate rule 흡수하려 함. 영구 fix = 모든 instance 의 `security_groups` → `vpc_security_group_ids` 교체 + SG inline ingress 모두 제거하고 `aws_security_group_rule` 로 통일. 다음 destroy + apply cycle 에서 정상 attribute 로 처음부터 build 되도록. 평가 마감 후 작업. 임시 회복은 AWS CLI `authorize-security-group-ingress` 두 줄로 SG rule 직접 추가됨 (이번 cycle 운용). |
-| R-64 | platform/30-kube-prometheus-stack application 을 multi-source 로 변경 (troica dashboards ConfigMap 자동 sync) | 📌 | R-42 검증 중 발견 — `platform/30-kube-prometheus-stack/application.yaml` 의 spec.source 가 helm chart 만 single source. `platform/30-kube-prometheus-stack/dashboards/troica-services.yaml` ConfigMap 매니페스트는 ArgoCD 가 sync 안 함 → cluster 에 ConfigMap 없음 → Grafana sidecar 가 dashboard 발견 못 함. 임시 회복은 `kubectl apply -f <raw URL>` 직접 (이번 cycle 운용). 영구 fix = application.yaml 을 `sources:` (multi) 로 변경하여 helm chart + git directory (dashboards/) 둘 다 sync. ConfigMap 은 helm chart 의 resource 와 race 없음 (Grafana sidecar 가 watch 측). 또는 별도 platform/31-troica-dashboards/ Application 으로 분리도 가능. 평가 마감 후 작업. |
-| R-65 | 6 polyrepo service 의 `micrometer-registry-prometheus` 의존성 추가 + actuator/prometheus path 정렬 | 🔄 | R-42 검증 중 발견 — `/actuator/metrics` 200 OK 단 `/actuator/prometheus` 404. 차이 = `spring-boot-starter-actuator` 만으로 노출되는 metric (JSON 형식) vs `micrometer-registry-prometheus` 의존성 필요한 Prometheus text format. **PR #120 (msa-argocd-manifest 의 chart env 추가) 만으로는 부족** — env 정상 적용됨 (`kubectl exec -- env` 로 확인) 단 endpoint 자체 존재 안 함. ServiceMonitor 가 `/prometheus` path 측 scrape 시도 단 404 → `up=0` → Prometheus 측 application metric 없음 → Troica dashboard 6 panel 모두 `No data`. 영구 fix = 6 polyrepo (msa-api-gateway / msa-auth-service / msa-user-service / msa-product-service / msa-inventory-service / msa-order-service) 각각 `build.gradle.kts` 에 `runtimeOnly("io.micrometer:micrometer-registry-prometheus")` 추가. PR: api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12. msa-spring-boot 는 legacy monorepo 라 read-only 정책 영향 없음 — polyrepo 각 repo 측 정상 PR. 머지 후 CI image rebuild → ECR push → ArgoCD sync → pod rolling → `/actuator/prometheus` 200 → ServiceMonitor `up=1` → Troica dashboard 6 panel data 표시 (R-41 Resilience4j Circuit Breaker State 시각 포함). |
+| R-61 | OutOfSync app 7 개 `ignoreDifferences` 정리 (cosmetic diff 무시) | 📌 | istio-base / istio-cp / external-secrets-config / strimzi-operator / tempo / platform-root / root-app — 모두 OutOfSync + Healthy. webhook inject + CRD default + child Secret 등 cosmetic diff. 평가 영향 X (작동 무영향) — 평가 후 별도 PR |
+| R-62 | istio-cp Application 분리 — multi-source race 영구 제거 | ✅ | 12 사이클 ingressgateway ImagePullBackOff 재발의 진짜 root cause = multi-source 안 chart 간 ordering. PR #118 = `platform/13-istio-ingressgateway/` Application 분리 (Wave -1). 자세히 [TROUBLESHOOTING §7.12](./TROUBLESHOOTING.md) |
+| R-63 | terraform `aws_instance.security_groups` → `vpc_security_group_ids` 교체 + SG inline/separate 정리 | 📌 | msa-provisioning. R-41 검증 중 발견 — SG rule 추가가 8 instance + 12 PVC force replacement trigger. EC2-Classic attribute + SG inline/separate 충돌. 임시 회복 = AWS CLI `authorize-security-group-ingress`. 자세히 [TROUBLESHOOTING §5.6](./TROUBLESHOOTING.md) |
+| R-64 | platform/30-kube-prometheus-stack multi-source 로 변경 (troica dashboards 자동 sync) | 📌 | application.yaml single-source 라 `dashboards/troica-services.yaml` ConfigMap sync 안 됨 → Grafana sidecar 발견 못 함. 임시 회복 = `kubectl apply` 직접. 자세히 [TROUBLESHOOTING §7.13](./TROUBLESHOOTING.md) |
+| R-65 | 6 polyrepo `micrometer-registry-prometheus` 의존성 추가 | 🔄 | R-42 검증 중 발견. PR #120 (env) + PR 6 (의존성) 동시 필요. PR: api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12. 자세히 [TROUBLESHOOTING §7.14](./TROUBLESHOOTING.md) |
 
 ### 폐기 (작업 안 하기로 결정)
 
@@ -305,7 +306,7 @@
 | (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.5 / P4.6 | ✅ |
 | (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (A) 코드 머지 + **R-41 (B) cluster 통과** ✅ — product-service scale 0 시 `/api/v1/products` 500 즉시 fail-fast (110-280ms) + 다른 4 service traffic 100% 정상 (`/api/v1/users` 401, `/api/v1/orders` 401, `/healthz` 200) | ✅ |
 | (2)-4 Resilience4j + Fault Injection | 선택 | **R-41 (B) Circuit Breaker OPEN 시그니처 cluster 시연** ✅ — backend down 시 첫 호출 435ms (CB CLOSED, fail count), 이후 9 회 110-280ms (CB OPEN, fail-fast). Fault Injection 의 Istio VirtualService 매니페스트는 평가 후 별도 추가 (시연 path = ArgoCD app selfHeal disable + scale 0 으로 cover) | ✅ |
-| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + **cluster 검증** ✅ — 외부 호출 응답 header `x-ratelimit-remaining: 9`, `x-ratelimit-burst-capacity: 10`, `x-ratelimit-replenish-rate: 1` 자동 노출. token bucket 작동 확인 | ✅ |
+| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + **R-50 (B) → Phase 6 이동** — header (`x-ratelimit-*`) 노출 + token 차감 작동 단 anonymous fallback key 분산 측 burst 도달 시연 미통과 ([§7.15](./TROUBLESHOOTING.md)) | 🔄 |
 | (3)-1 JUnit 단위 + CI | 필수 | **R-57** (7 polyrepo ~48 케이스) — CI history 모두 success + cluster image tag 증거 | ✅ |
 | (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42 (A)** collection + workflow 머지 ✅ + **R-42 (B) cluster 통과** ✅ — Newman workflow #5 run 의 5 시나리오 중 4 PASS (signup 200 6.4s / signin 200 + JWT 2.1s / products 200 2.2s / inventories 200 2.6s). orders step 은 cluster 의 product/inventory seed data 부재로 400 — 서비스 연계 chain 자체 통과 (NLB → Istio → api-gateway → backend gRPC/REST → JWT 인증 → DB 조회). | ✅ |
 | (3)-3 Prometheus + Grafana | 필수 | **R-35 (A)** kube-prometheus-stack + **R-42 (B) 통과** ✅ — Grafana built-in dashboard (Kubernetes Compute Resources / Node Exporter / Prometheus Overview) + Prometheus Targets page (cnpg / kafka / istio / kube-state-metrics 활성 scrape) 시각 검증. application-level metric 의 Troica dashboard panel data 는 R-65 의존성 머지 후 cluster sync 측. | ✅ |
@@ -333,13 +334,25 @@
 | (3)-4 Incident Response 5 단계 | 선택 | **R-56** | 📌 |
 | (3)-5 Falco DaemonSet | 선택 | **R-55** | 📌 |
 
-**필수 18 개 cover 현황 (코드 직접 검증 기준)**
-- 기본 필수 9 중 ✅ **9** (R-42 (B) Newman E2E 4/5 시나리오 + Grafana 시각 통과)
-- 심화 필수 9 중 ✅ 9
-- **선택 항목 통과**: 기본 (2)-4 Resilience4j ✅ + 기본 (2)-5 Rate Limit ✅ + 기본 (3)-5 Newman CLI ✅ + 기본 (3)-6 Kafka lag ✅
-- 합계: **✅ 18 / 18 완성** 🎉
+**필수 18 개 cover 현황 (cluster 직접 검증 기준, 2026-05-17)**
+- 기본 필수 9 / 9 ✅
+- 심화 필수 9 / 9 ✅
+- **합계: 18 / 18 완성** 🎉
 
-평가 (3)-2 의 orders step 은 cluster up 직후 product / inventory seed data 부재 측 fail (서비스 연계 chain 자체 통과). R-65 (6 polyrepo micrometer 의존성 추가 PR 머지 후) 효과 추가 시 Troica dashboard application-level metric 도 보너스 자료.
+**선택 항목 보너스 통과**:
+- 기본 (2)-4 Resilience4j ✅ (R-41 (B) Circuit Breaker OPEN signature)
+- 기본 (3)-5 Newman CLI in CI ✅ (R-42 (B) workflow #6 5/5 시나리오)
+- 기본 (3)-6 Kafka consumer lag ✅ (R-35 (B) Strimzi exporter)
+- 기본 (1)-5 Event Sourcing ✅ (R-22 inventory)
+
+**선택 항목 Phase 6 으로 이동**:
+- 기본 (2)-5 Rate Limit (R-50 (B)) — `x-ratelimit-*` header 자동 노출 확인 단 burst 도달 시연 미통과 (TROUBLESHOOTING §7.15)
+
+**Phase 6 후속 작업 (평가 영향 X)**:
+- R-61 OutOfSync ignoreDifferences 정리
+- R-63 terraform attribute deprecated 정정
+- R-64 platform-30 multi-source
+- R-65 6 polyrepo micrometer 의존성 (PR 진행 중 → 보너스 Troica dashboard panel data)
 - 합계: **✅ 12 / 🔄 6** — 모든 매니페스트 / 코드 / 문서 머지 완료. cluster up + Slack 채널 생성 → 18/18 ✅
 
 (A) 매니페스트 작업이 모두 머지된 상태로 ⏸ 는 0. 🔄 6 건은 모두 "cluster up 후 자동 검증" 또는 "외부 5분 작업" 단위.
