@@ -1,8 +1,9 @@
-# Phase 4 Runbook — 5개 서비스 폴리레포화
+# Phase 4 Runbook — 5개 서비스 폴리레포화 (완료 — Historical)
 
 > **목적**: Phase 3(`msa-order-service`)에서 확정된 패턴을 5개 서비스에 일관 적용하기 위한 액션 레시피.
 > SPEC([`TROICA_SPEC.md`](./TROICA_SPEC.md))은 원칙·청사진, 본 문서는 실행 절차.
-> 결정 변경 시 SPEC 본문 갱신 후 본 문서도 동기화.
+>
+> **상태**: Phase 4 완료 (2026-05-13). 본 문서는 Phase 4 진행 시점 기준 historical document — 당시 사용한 common-libs `v0.3.0` 등 옛 fact 그대로 보존. 최신 상태는 [PROGRESS_LOG.md](./PROGRESS_LOG.md) + [BACKLOG.md](./BACKLOG.md) 참조.
 
 ---
 
@@ -174,8 +175,10 @@ implementation(project(":common"))
 implementation(project(":client-redis"))
 
 // 변경 후 (polyrepo):
-implementation("com.troica.msa:common:0.2.0")
-implementation("com.troica.msa:client-redis:0.2.0")
+implementation("com.troica.msa:common:0.3.0")
+// client-redis 는 GH Packages 대신 JitPack 측 (ADR-0002, D2):
+implementation("com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2")
+// settings.gradle.kts 측 maven { url = uri("https://jitpack.io") } 추가
 ```
 
 ### 3.8 `application.yaml` 프로파일 분리
@@ -374,6 +377,7 @@ Phase 4 첫 PoC로 머지됨. 단순 추출 패턴 검증.
 
 ---
 
-**문서 버전**: 1.0
+**문서 버전**: 1.0 (Phase 4 완료 시점 historical)
 **작성일**: 2026-05-12
-**갱신**: Phase 4 진행 중 발견사항을 BACKLOG에 R 항목으로 추가하고 본 문서도 동기화
+**Phase 4 종료**: 2026-05-13 (6 polyrepo 모두 main 머지)
+**후속 진행**: Phase 5/6 측은 [PROGRESS_LOG.md](./PROGRESS_LOG.md) + [BACKLOG.md](./BACKLOG.md) 측 추적
