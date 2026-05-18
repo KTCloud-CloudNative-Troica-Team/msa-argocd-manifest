@@ -13,6 +13,8 @@
 
 ## 1. Network 레이어 (VPC + AZ + Subnet + IGW + NAT + NLB)
 
+![aws_arch_1_network.png](aws_arch_1_network.png)
+
 ```mermaid
 flowchart TB
   Internet([🌐 Internet])
@@ -112,6 +114,8 @@ flowchart TB
 
 ## 2. Compute + Storage (EC2 + EFS + EBS + VPC Endpoint)
 
+![aws_arch_2_compute_storage.png](aws_arch_2_compute_storage.png)
+
 ```mermaid
 flowchart LR
   subgraph VPC["☁️ VPC kt-cloud-vpc"]
@@ -197,6 +201,8 @@ flowchart LR
 
 ## 3. Security Groups + 트래픽 흐름
 
+![aws_arch_3_sg_traffic.png](aws_arch_3_sg_traffic.png)
+
 ```mermaid
 flowchart TB
   User([👤 User])
@@ -266,6 +272,8 @@ flowchart TB
 
 ## 4. CI/CD — GitHub Actions OIDC → ECR push
 
+![aws_arch_4_cicd.png](aws_arch_4_cicd.png)
+
 ```mermaid
 flowchart LR
   subgraph GH["🐙 GitHub Organization<br/>KTCloud-CloudNative-Troica-Team"]
@@ -332,6 +340,8 @@ flowchart LR
 ---
 
 ## 5. EC2 노드의 ECR Image Pull (kubelet 경로 — CI push와 별개)
+
+![aws_arch_5_ecr_image_pull.png](aws_arch_5_ecr_image_pull.png)
 
 ```mermaid
 flowchart TB
@@ -436,6 +446,8 @@ flowchart LR
 ---
 
 ## 7. 통합 토폴로지 (한 화면 요약)
+
+![aws_arch_7_topology.png](aws_arch_7_topology.png)
 
 ```mermaid
 flowchart TB

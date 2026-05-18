@@ -9,6 +9,8 @@
 
 ## 전체 흐름 (Developer → 클러스터)
 
+![gitops.png](gitops.png)
+
 ```mermaid
 flowchart TB
   Dev([👨‍💻 Developer])

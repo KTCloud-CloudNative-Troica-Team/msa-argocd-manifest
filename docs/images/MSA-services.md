@@ -9,6 +9,8 @@
 
 ## 토폴로지
 
+![service_topology.png](service_topology.png)
+
 ```mermaid
 flowchart TB
   Client([🌐 Client<br/>web / mobile / Newman E2E])
