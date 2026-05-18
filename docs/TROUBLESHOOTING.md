@@ -1,6 +1,6 @@
 # Troica Troubleshooting
 
-> Troica polyrepo 마이그레이션 (Phase 0~) 진행 중 마주친 이슈와 해결책 누적.
+> Troica polyrepo 마이그레이션 (Phase 0 ~ 5 완료, Phase 6 진행 중) 측 마주친 이슈와 해결책 누적.
 >
 > - **BACKLOG.md**: 작업 진행 상태 (완료/진행 중/대기)
 > - **본 문서**: 디버깅 자료 — 증상 / 원인 / 해결 / 재발 방지
@@ -1091,13 +1091,13 @@ curl -fsSL https://raw.githubusercontent.com/.../platform/30-kube-prometheus-sta
 
 **Lesson — 한 layer 만 만지면 효과 0**: 내가 PR #120 (env) 를 root cause 라 단정하고 PR 했지만 의존성 부재가 동시 issue. 양쪽 다 fix 필요한 경우 fact 부족 상태의 PR 은 효과 없음. 의심 시 cluster fact (curl, kubectl exec) 로 정확한 layer 부터 분리.
 
-**영구 fix path (PR 6 개 — api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12)**:
+**영구 fix (6 polyrepo PR 머지 완료, 2026-05-18)**:
 ```kotlin
 // build.gradle.kts
 runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 ```
 
-머지 후 CI image rebuild → ECR push → manifest dev tag bump (CI workflow 자동) → ArgoCD sync → pod rolling → `/actuator/prometheus` 200 + ServiceMonitor `up=1` → Troica dashboard panel data.
+PR: api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12 모두 머지. CI image rebuild → ECR push → manifest dev tag bump (CI workflow 자동) → ArgoCD sync → pod rolling → `/actuator/prometheus` 200 + ServiceMonitor `up=1` → Troica dashboard 6 panel data 활성 확인.
 
 ---
 
