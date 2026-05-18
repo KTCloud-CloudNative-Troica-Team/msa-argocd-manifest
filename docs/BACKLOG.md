@@ -190,7 +190,6 @@
 | R-47 (B) | AlertManager `#security-report` 라우팅 실 배포 | ✅ | 심화 (2)-3 (필수) | 2026-05-17 통과 (PR #114 들여쓰기 fix 후): manual fire (severity=security) → `:rotating_light: ManualSecurityTest` #security-report 도착. severity=warning → #alerts 도착. ADR-0010 채널 분기 실 작동 |
 | R-48 (B) | RBAC 실 작동 검증 (`kubectl auth can-i`) | ✅ | 심화 (3)-1·(3)-2 (필수) | 2026-05-17 통과: developer (Allow 4 + Deny 4) / operator (Allow 4 + Deny 5) / sre (Allow 4) 12 명령 모두 기대대로. ServiceAccount RBAC = 진정한 최소 권한 (rules=[]) |
 | R-49 (B) | NetworkPolicy 통신 차단 검증 | ✅ | 심화 (3)-3 (필수) | 2026-05-17 통과: ALLOW (api-gateway label → auth-service:9005, 0.71s) + DENY (product-service label → auth-service:9005, 5s timeout) + DENY (port mismatch user-service:8100, 5s timeout). label-level + port-level 분리 |
-| R-50 (B) | RequestRateLimiter 실 작동 검증 | 📌 Phase 6 (선택) | 기본 (2)-5 (선택) | **Phase 6 으로 이동**. anonymous fallback 측 key 가 매 호출 다른 bucket 측 — burst 도달 시연 미통과. 단 `x-ratelimit-*` header 자동 노출 + token bucket 차감 자체 확인됨 = 매니페스트 + filter 작동 증명. 자세히 [TROUBLESHOOTING §7.15](./TROUBLESHOOTING.md). 평가 (선택) 라 필수 X |
 
 ### (C) 외부 수동 셋업
 
@@ -200,11 +199,11 @@
 
 ---
 
-## Phase 6 — 심화 옵션 + 운영 전환 + 발표 (대기)
+## Phase 6 — 선택 평가요소 + 운영 전환 (대기)
 
-> **목적**: 평가 **선택 항목** 으로 발표 임팩트 강화 + 운영 단계 진입을 위한 정리 작업 + 최종 발표 자료. 필수 항목은 Phase 5 종료 시점에 이미 cover 된 상태.
+> **목적**: 평가 **선택 항목** + 운영 단계 진입을 위한 정리 작업. 필수 항목은 Phase 5 종료 시점에 이미 cover 된 상태.
 
-### (A) 선택 평가요소 (발표 임팩트)
+### (A) 선택 평가요소
 
 | ID | Task | 상태 | 평가요소 | 산출물 |
 |---|---|---|---|---|
@@ -225,12 +224,6 @@
 | R-08 | `msa-spring-boot` 모노레포 archive | ⏸ | (정리) | GitHub UI archive. 모든 서비스 polyrepo 이전 완료 후 |
 | R-15 | GitHub Actions SHA pin + Dependabot/Renovate 정책 재검토 | ⏸ | (보안 강화) | R-27 (g) Dependabot 폐기 후 별도 가벼운 대안 |
 | R-18 | Spring Boot 3.5 OSS EOL 2026-06-30 모니터링 | ⏸ | (운영) | 3.6 / 4.0 마이그레이션 검토 |
-
-### (C) 발표 자료
-
-| ID | Task | 상태 | 평가요소 | 산출물 |
-|---|---|---|---|---|
-| P6.1 | 발표 자료 (architecture diagram + decision log + 비용 분석 + SonarCloud Dashboard 캡쳐) | ⏸ | (발표) | KT Cloud Tech UP 2기 발표 |
 
 ---
 
@@ -257,7 +250,7 @@
 | R-62 | istio-cp Application 분리 — multi-source race 영구 제거 | ✅ | 12 사이클 ingressgateway ImagePullBackOff 재발의 진짜 root cause = multi-source 안 chart 간 ordering. PR #118 = `platform/13-istio-ingressgateway/` Application 분리 (Wave -1). 자세히 [TROUBLESHOOTING §7.12](./TROUBLESHOOTING.md) |
 | R-63 | terraform `aws_instance.security_groups` → `vpc_security_group_ids` 교체 + SG inline/separate 정리 | 📌 | msa-provisioning. R-41 검증 중 발견 — SG rule 추가가 8 instance + 12 PVC force replacement trigger. EC2-Classic attribute + SG inline/separate 충돌. 임시 회복 = AWS CLI `authorize-security-group-ingress`. 자세히 [TROUBLESHOOTING §5.6](./TROUBLESHOOTING.md) |
 | R-64 | platform/30-kube-prometheus-stack multi-source 로 변경 (troica dashboards 자동 sync) | 📌 | application.yaml single-source 라 `dashboards/troica-services.yaml` ConfigMap sync 안 됨 → Grafana sidecar 발견 못 함. 임시 회복 = `kubectl apply` 직접. 자세히 [TROUBLESHOOTING §7.13](./TROUBLESHOOTING.md) |
-| R-65 | 6 polyrepo `micrometer-registry-prometheus` 의존성 추가 | 🔄 | R-42 검증 중 발견. PR #120 (env) + PR 6 (의존성) 동시 필요. PR: api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12. 자세히 [TROUBLESHOOTING §7.14](./TROUBLESHOOTING.md) |
+| R-65 | 6 polyrepo `micrometer-registry-prometheus` 의존성 추가 | ✅ | R-42 검증 중 발견. PR #120 (chart env) + 6 polyrepo PR 모두 머지 (api-gateway #14, auth #9, user #7, product #23, inventory #8, order #12). CI image rebuild + ECR push + ArgoCD sync 후 `/actuator/prometheus` 200 + ServiceMonitor `up=1` + Troica dashboard 6 panel data 활성. 자세히 [TROUBLESHOOTING §7.14](./TROUBLESHOOTING.md) |
 
 ### 폐기 (작업 안 하기로 결정)
 
@@ -306,7 +299,7 @@
 | (2)-2 API GW + 경로 라우팅 + JWT 필터 | 필수 | ADR-0005 / P4.5 / P4.6 | ✅ |
 | (2)-3 장애 격리 시나리오 설계 + 코드 | 필수 | **R-41** (A) 코드 머지 + **R-41 (B) cluster 통과** ✅ — product-service scale 0 시 `/api/v1/products` 500 즉시 fail-fast (110-280ms) + 다른 4 service traffic 100% 정상 (`/api/v1/users` 401, `/api/v1/orders` 401, `/healthz` 200) | ✅ |
 | (2)-4 Resilience4j + Fault Injection | 선택 | **R-41 (B) Circuit Breaker OPEN 시그니처 cluster 시연** ✅ — backend down 시 첫 호출 435ms (CB CLOSED, fail count), 이후 9 회 110-280ms (CB OPEN, fail-fast). Fault Injection 의 Istio VirtualService 매니페스트는 평가 후 별도 추가 (시연 path = ArgoCD app selfHeal disable + scale 0 으로 cover) | ✅ |
-| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ + **R-50 (B) → Phase 6 이동** — header (`x-ratelimit-*`) 노출 + token 차감 작동 단 anonymous fallback key 분산 측 burst 도달 시연 미통과 ([§7.15](./TROUBLESHOOTING.md)) | 🔄 |
+| (2)-5 Rate Limit | 선택 | **R-50** 매니페스트 ✅ — header (`x-ratelimit-*`) 노출 + token 차감 작동. burst 도달 시연은 Phase 6 의 R-50 (B) 측 (anonymous fallback key 정정 필요, [§7.15](./TROUBLESHOOTING.md)) | 🔄 |
 | (3)-1 JUnit 단위 + CI | 필수 | **R-57** (7 polyrepo ~48 케이스) — CI history 모두 success + cluster image tag 증거 | ✅ |
 | (3)-2 Postman E2E (서비스 연계) | 필수 | **R-42 (A)** collection + workflow 머지 ✅ + **R-42 (B) cluster 통과** ✅ — Newman workflow #5 run 의 5 시나리오 중 4 PASS (signup 200 6.4s / signin 200 + JWT 2.1s / products 200 2.2s / inventories 200 2.6s). orders step 은 cluster 의 product/inventory seed data 부재로 400 — 서비스 연계 chain 자체 통과 (NLB → Istio → api-gateway → backend gRPC/REST → JWT 인증 → DB 조회). | ✅ |
 | (3)-3 Prometheus + Grafana | 필수 | **R-35 (A)** kube-prometheus-stack + **R-42 (B) 통과** ✅ — Grafana built-in dashboard (Kubernetes Compute Resources / Node Exporter / Prometheus Overview) + Prometheus Targets page (cnpg / kafka / istio / kube-state-metrics 활성 scrape) 시각 검증. application-level metric 의 Troica dashboard panel data 는 R-65 의존성 머지 후 cluster sync 측. | ✅ |
@@ -351,9 +344,7 @@
 **Phase 6 후속 작업 (평가 영향 X)**:
 - R-61 OutOfSync ignoreDifferences 정리
 - R-63 terraform attribute deprecated 정정
-- R-64 platform-30 multi-source
-- R-65 6 polyrepo micrometer 의존성 (PR 진행 중 → 보너스 Troica dashboard panel data)
-- 합계: **✅ 12 / 🔄 6** — 모든 매니페스트 / 코드 / 문서 머지 완료. cluster up + Slack 채널 생성 → 18/18 ✅
+- R-64 platform-30 multi-source (troica dashboards 자동 sync)
 
 (A) 매니페스트 작업이 모두 머지된 상태로 ⏸ 는 0. 🔄 6 건은 모두 "cluster up 후 자동 검증" 또는 "외부 5분 작업" 단위.
 
