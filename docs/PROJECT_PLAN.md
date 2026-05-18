@@ -91,22 +91,21 @@
 | **빌드 도구** | **Gradle 8.10.2** | Kotlin 2.1.0과 짝. 9.x는 동일 JetBrains 버그로 보류 |
 | **백엔드 프레임워크** | **Spring Boot 3.5.13** | CVE-2025-22235 fix 포함. SB 3.5는 2026-06-30 OSS EOL — Phase 6 후 3.6/4.0 마이그레이션 검토 (R-18) |
 | **API Gateway** | **Spring Cloud Gateway 2025.0.2 (Northfields) + WebFlux BFF 혼합** | **단일 deployable에서 일부 path는 SC Gateway routes로 reverse proxy(REST), 일부는 BFF가 gRPC client로 백엔드 호출** (ADR-0005). 모든 요청에 JWT 필터 적용 |
-| **공통 라이브러리** | **`msa-common-libs`** (멀티모듈 Gradle: `common` + `events`) | JPA/QueryDSL/예외/유틸 + Protobuf 스키마. GH Packages publish (v0.3.1 최신) |
-| **회복성** | **Resilience4j (Circuit Breaker, Retry, Bulkhead)** | Hystrix 대체 표준 |
-| **관계형 DB** | **PostgreSQL** (서비스별 독립 인스턴스 × 6) | Read Replica·논리 복제 (Phase 5에서 CNPG Operator 적용 예정) |
-| **캐시 / 분산 락** | **Redis** (Redisson 클라이언트) | Lua 원자 연산, RedLock. 클라이언트는 JitPack 외부 의존성 (ADR-0002) |
-| **이벤트 스트리밍** | **Apache Kafka (KRaft 모드)** | 표준 비동기 메시징. 현재 single broker, Phase 5에서 Strimzi Operator + 3 broker cluster 전환 |
+| **공통 라이브러리** | **`msa-common-libs`** (멀티모듈 Gradle: `common` + `events`) | JPA/QueryDSL/예외/유틸 + Protobuf 스키마. GH Packages publish (**v0.4.0 최신** — api-gateway WebFlux 측 servlet 제거. 5 service 측 servlet 호환 v0.3.1 그대로) |
+| **회복성** | **Resilience4j (Circuit Breaker)** | Hystrix 대체 표준. `InventoryQueryService.runCatching` fallback (R-41). 100-280ms fail-fast = OPEN signature 검증 통과 |
+| **관계형 DB** | **PostgreSQL** (서비스별 독립 인스턴스 × 6) | CNPG (CloudNativePG) Operator + Cluster CR × 6. PVC dynamic provisioning (EBS CSI) |
+| **캐시 / 분산 락** | **Redis** (Redisson 클라이언트) | Lua 원자 연산, RedLock. 클라이언트는 JitPack 외부 의존성 (ADR-0002). cluster 측 단순 K8s Deployment + Service (Spotahome operator 측 PR #105 측 제거 — chart manifest gen error 회피) |
+| **이벤트 스트리밍** | **Apache Kafka (KRaft 모드)** | 표준 비동기 메시징. Strimzi Operator + Kafka CR + 4 KafkaTopic CR (`order.{pending, inventory-reserved, confirmed, cancelled}`). 1 broker (PoC diet) |
 | **이벤트 직렬화** | **JSON wire** (Protobuf 코드젠 보유, wire 미사용) | ADR-0003 — 모노레포 호환 + 학습 부담 회피. Protobuf wire 마이그레이션은 SemVer breaking change로 추후 트랙 |
 | **구성 관리 (CM)** | **Ansible (로컬 ansible-playbook)** | EC2 OS 부트스트랩 + kubeadm init/join + CNI(Calico) 설치 자동화. R-30: `kubeadm-flags.env` 직접 통합 (drop-in 미평가 우회) |
-| **컨테이너 오케스트레이션** | **Kubernetes (EC2 self-managed, kubeadm)** | Master 3 + Worker 3 + Bastion 2 구성. SPOF·Split Brain을 직접 통제하며 학습 |
+| **컨테이너 오케스트레이션** | **Kubernetes (EC2 self-managed, kubeadm)** | Master 3 (t3.medium) + Worker 3 (t3.large, R-59 메모리 상향) + Bastion 2 (t3.nano) 구성. SPOF·Split Brain을 직접 통제하며 학습 |
 | **Container Runtime** | **containerd** | |
-| **Service Mesh (심화)** | **Istio + Envoy** (Phase 5 예정) | 현 `msa-provisioning`의 Traefik은 Phase 5에서 제거 (R-03 / SPEC §0) |
-| **계측 (Instrumentation)** | **OpenTelemetry SDK** (Phase 5 예정) | CNCF 표준, 벤더 중립 |
-| **메트릭** | **Prometheus + Mimir** (Phase 5 예정) | 장기 보관·Multi-tenant |
-| **트레이싱** | **Tempo** (Phase 5 예정) | LGTM 스택 통합, 비용 효율 |
-| **로깅** | **Loki + Promtail** (Phase 5 예정) | 라벨 기반 인덱싱 |
-| **시각화** | **Grafana** (Phase 5 예정) | 메트릭·로그·트레이스 단일 뷰 + Slack/PagerDuty webhook 알림 |
-| **알림** | **AlertManager → Slack (warning/info) + PagerDuty (critical)** | 별도 notification 서비스 폐기 (ADR-0001) |
+| **Service Mesh** | **Istio 1.23.3 + Envoy** | istio-base (CRD) + istiod + Gateway + VirtualService + PeerAuthentication STRICT (mTLS) + DestinationRule + istio-ingressgateway (R-62 PR #118 분리 — multi-source race 영구 제거). 외부 진입 = NLB → istio-ingressgateway → api-gateway. ADR-0009 책임 분담 |
+| **메트릭** | **Prometheus + Grafana** (kube-prometheus-stack) | Prometheus operator + ServiceMonitor 자동 발견 + Grafana 시각화. Troica dashboard (req rate / 5xx / P99 / Kafka lag / JVM heap / R-41 CB state) — R-65 의존성 머지 후 panel data 활성 |
+| **트레이싱** | **Tempo** | LGTM 스택 통합, 비용 효율 |
+| **로깅** | **Loki + Promtail** | 라벨 기반 인덱싱 |
+| **시각화** | **Grafana** | 메트릭·로그·트레이스 단일 뷰 + Slack webhook 알림 |
+| **알림** | **AlertManager → Slack 채널 분리** (ADR-0010) | severity=security → `#security-report` (`:rotating_light:` prefix), 그 외 (warning/info) → `#alerts`. PagerDuty 미사용. 별도 notification 서비스 폐기 (ADR-0001) |
 | **프론트엔드** | **React 19.2 + Vite 8 + TypeScript 6** + TanStack Router(file-based) + TanStack Query + MUI v9 + Tailwind v4 + Emotion + Zustand + Axios | **별도 polyrepo `msa-frontend`** (팀장님 작성, `market-msa-app/`). 정적 호스팅 (S3 + CloudFront) 배포는 Phase 6 (R-40) |
 | **테스트** | **JUnit 5, Mockito, Testcontainers, Postman + Newman CLI** | Mock-less 통합 테스트 |
 | **CI** | **GitHub Actions** | 빌드·단위 테스트·Trivy 스캔·**ECR push** (OIDC AssumeRole)·매니페스트 image tag bump (dev=direct commit, prod=PR) |
@@ -190,7 +189,7 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 - **영구/임시 자원 분리** — IAM/KMS/ECR/VPC는 `prevent_destroy=true` (월 ~$1), EC2/NAT/NLB/EFS는 destroy 사이클 (월 ~$300)
 - **S3 backend** — Terraform 외부 수동 생성 (`troica-tfstate-<SUFFIX>`)
 
-> 외부 진입은 **현재 NLB :6443 (kube-apiserver)만 노출** — 애플리케이션 트래픽용 ALB는 Phase 5에서 Istio Gateway로 대체 예정 (R-03).
+> 외부 진입은 **NLB listener 3개**: `:6443` (kube-apiserver, k8s-api-tg → master target group) + `:80` (Istio HTTP, istio-http-tg → worker NodePort 30080) + `:443` (Istio HTTPS, istio-https-tg → worker NodePort 30443). PR #22 (R-35 d) 측 Istio Gateway path 추가. source IP preservation = true 측 `cluster-node-sg` 에 `30080/30443 from 0.0.0.0/0` ingress 필수.
 
 ### 5.2 MSA 통신 구조
 
@@ -221,20 +220,21 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 | `/api/v1/auth/**` | BFF (gRPC) | auth-service :9005 |
 | `/api/v1/products/**` | BFF (gRPC) | product-service :9001 |
 | `/api/v1/orders/**` | BFF (gRPC) | order-service :9002 |
-| `/api/v1/inventory/**` | BFF (gRPC) | inventory-service :9003 |
-| `/api/v1/users/**` | SC Gateway 패스스루 (REST) | user-service :8004 |
-| `/admin/v1/orders/**` | SC Gateway 패스스루 (REST) | order-service :8002 (admin) |
+| `/api/v1/inventories/**` | BFF (gRPC) + **R-41 Circuit Breaker** (`InventoryQueryService` runCatching fallback) | inventory-service :9003 |
+| `/api/v1/users/**` | SC Gateway 패스스루 (REST) + **R-50 RequestRateLimiter** (default-filters, burst 10 / replenish 1/s) | user-service :8004 |
+| `/admin/v1/orders/**` | SC Gateway 패스스루 (REST) + **R-50 별도 filter** (burst 3, 더 빡빡) | order-service :8002 (admin) |
 
 ### 5.3 데이터 아키텍처
 
-- **Database per Service**: 서비스별 독립 PostgreSQL 인스턴스 6개 (auth-db, user-db, product-db, order-db + outbox, inventory-db = event store + snapshot)
-- **Read Replica**: product/inventory에 적용 예정 (Phase 5)
-- **Redis**: auth-service (refresh token), inventory-service (stock cache) — Phase 5에서 Redis Cluster 3 master + 3 replica 전환
-- **Kafka**: 현재 single broker (KRaft), Phase 5에서 Strimzi Operator + StatefulSet 3 broker
+- **Database per Service**: 서비스별 독립 PostgreSQL 인스턴스 6개 — CNPG (CloudNativePG) Operator + Cluster CR × 6 (auth-db / user-db / product-db / order-db + outbox table / inventory-db = event store + snapshot / ops-db). PoC diet 측 instances=1 (운영 단계 측 HA 환원)
+- **Read Replica**: CNPG `instances` 측 증설 가능 (Phase 6 / 운영 단계)
+- **Redis**: auth-service (refresh token), inventory-service (stock cache), api-gateway (R-50 RequestRateLimiter token bucket). 단순 K8s Deployment + Service (Spotahome operator 측 PR #105 제거 — chart manifest gen error 회피)
+- **Kafka**: Strimzi Operator + Kafka CR + 4 KafkaTopic CR (`order.{pending, inventory-reserved, confirmed, cancelled}`). KRaft 모드 1 broker (PoC diet, 운영 단계 측 3 broker 환원)
 - **Object Storage(S3)**: 상품 이미지·정적 자산 (Phase 6) + S3 Lifecycle → Glacier 이관
-- **EFS**: 공유 로그·설정 (현재 미사용, Phase 5 활용)
-- **EBS**: StatefulSet PVC (worker 노드 × 3에 20GB씩)
+- **EFS**: 공유 로그·설정 (Mount Target × 2, 양 AZ private subnet ENI)
+- **EBS**: PVC dynamic provisioning (EBS CSI driver, R-35) — 11 PVC Bound (CNPG 6 + Kafka + Prometheus + Loki + Tempo + Grafana)
 - **암호화**: 모든 EBS/S3/EFS/ECR는 **AWS KMS** Customer Managed Key로 SSE 암호화
+- **Secrets**: AWS Secrets Manager (`troica/*`) → External Secrets Operator (IMDS 인증, self-managed kubeadm 측 IRSA 부재) → K8s Secret → service `envFrom secretRef` (R-25 / R-33)
 
 ### 5.4 정적 웹 호스팅
 
@@ -699,3 +699,5 @@ CREATED → PENDING → PAID → SHIPPING → SHIPPED → CONFIRMED
 | 2026-05-13 | **msa-frontend 반영** | 10번째 polyrepo `msa-frontend` (팀장님 작성, React 19 + Vite 8 + TS 6 + TanStack + MUI + Tailwind + Zustand) 추가. 호스팅 배포는 R-40 Phase 6 |
 | 2026-05-13 | **평가요소 100% cover 보강** | KT Cloud Tech UP 2기 평가 필수 18개 항목을 R-41~R-49 (Phase 5) + R-50~R-56 (Phase 6 선택) 으로 분해. Epic E13(확장성)/E14(DevSecOps)/E15(보안 아키텍처) 신설. BACKLOG에 "평가요소 매핑" 인덱스 섹션 추가 |
 | 2026-05-14 | **R-57 단위 테스트 + ADR-0011 SonarCloud 정책** | (1) R-57 7 polyrepo 단위 테스트 ~48 케이스 머지 — common-libs/product/user/inventory/order/auth/api-gateway. 도메인 entity / state machine / JWT round-trip / Circuit Breaker Fallback 위주. 평가 기본 (3)-1 ✅ (2) R-45 sonarcloud.io 셋업 완료 (Troica Org + 7 프로젝트 import + Automatic Analysis OFF). 무료 plan custom Quality Gate 적용 불가 발견 → ADR-0011 — `qualitygate.wait=false` + Sonar way Dashboard 시각화 + Hotspot Review 절차 정립. 평가 심화 (2)-1 ✅ (3) R-58 신설 — Testcontainers 통합 테스트 (Phase 6 선택). 필수 cover 13/18 → 14/18 |
+| 2026-05-17 | **Phase 5 cluster 통과 (12/14 = 86%)** | 15 PR 머지 (worker root volume 50GB / AWS LB Controller 제거 / ArgoCD nodePort 30090·30493 / manifest diet / Spotahome redis-operator 제거 / Istio namespace inject label / AlertManager secrets indent fix). R-03 (B) Service Mesh + R-25 JWT + R-33 ConfigMap + R-35 (B) Platform reconcile + R-43 PDB + R-44 (B) 독립 배포 + R-45 SonarCloud + R-46 Trivy + R-47 (B) Slack + R-48 (B) RBAC + R-49 (B) NetworkPolicy + R-57 JUnit 검증 통과 |
+| 2026-05-18 | **Phase 5 완료 — 평가 18/18 cluster 시연 통과** | R-41 (B) Circuit Breaker OPEN signature (110-280ms fail-fast) + R-42 (B) Newman 5/5 시나리오 PASS + R-50 RateLimit header 노출 확인. R-62 (PR #118) istio-cp Application 분리 — multi-source race 영구 제거 (`platform/13-istio-ingressgateway/` Wave -1). R-65 (6 polyrepo PR) micrometer-registry-prometheus 의존성 추가 → `/actuator/prometheus` 200 + Troica dashboard panel data. NLB Istio path (R-35 d / PR #22) — listener 6443+80+443 + target group 3 + attachment 9 + SG ingress 30080/30443. **Phase 6 진입** — 선택 항목 (KEDA / Rollouts / OPA / ZAP / Falco / IR / Testcontainers / R-50 anonymous fallback) + 운영 전환 (frontend hosting / monorepo archive / SHA pin / SB EOL). 자세히 [PROGRESS_LOG.md](./PROGRESS_LOG.md), [BACKLOG.md](./BACKLOG.md) |

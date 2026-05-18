@@ -18,18 +18,20 @@
 | 이미지 빌드 | **Multistage Dockerfile + Trivy 스캔** |
 | order-worker | 별도 레포 아님 — order-service 코드베이스 내 `SPRING_PROFILES_ACTIVE=worker` 분기 + 별도 K8s Deployment |
 | inventory event-sourcing worker | order-worker와 동일 패턴 — inventory-service 코드베이스 내 **Spring Batch** 기반 worker 분기 (`SPRING_PROFILES_ACTIVE=worker`) + 별도 K8s Deployment. 이벤트 스토어를 주기적으로 projection (Q7) |
-| 알림 라우팅 | **AlertManager → PagerDuty (critical) + Slack (warning/info)** — **Grafana 알림 채널만 사용** (별도 notification 서비스 폐기) |
+| 알림 라우팅 | **AlertManager → Slack 채널 분리** (ADR-0010): severity=security → `#security-report`, 그 외 (warning/info) → `#alerts`. PagerDuty 미사용. 별도 notification 서비스 폐기 |
 | ~~Notification 서비스~~ | **폐기**. 모든 시스템 알림은 Prometheus metrics → AlertManager → Slack 경로로. 비즈니스 이벤트(`order.confirmed`/`order.cancelled`)는 발행은 유지하되 현재 consumer 없음 |
-| payment / shipping | 별도 서비스 없음, order-service 내 **state machine 확장**(`PAYMENT_PENDING` → `PAID` → `SHIPPING` → `SHIPPED` → `CONFIRMED` 또는 `CANCELLED`)으로 시뮬레이션 (Q6) |
-| GitOps 패턴 | App-of-Apps + Sync Wave (플랫폼) + ApplicationSet Git Generator (마이크로서비스) |
-| 이벤트 스키마 | **Kafka wire는 JSON 유지** (Q4 (a) 결정). `msa-common-libs:events` Protobuf 스키마는 코드 양립용으로 보유하되 wire 직렬화에 미사용. wire→Protobuf 마이그레이션은 SemVer breaking change로 추후 별도 트랙 |
-| Kafka 토픽 명명 | **SPEC §9.1 표준 사용** (Q5 (a) 결정): `order.pending` / `order.inventory-reserved` / `order.confirmed` / `order.cancelled`. 모노레포의 `*-topic` suffix 이름은 변경 |
-| Service mesh / Ingress | **Istio** (Traefik 아님). 현 `msa-provisioning`의 Traefik은 Phase 5에서 제거 |
+| payment / shipping | 별도 서비스 없음, order-service 내 **state machine 확장**(`PAYMENT_PENDING` → `PAID` → `SHIPPING` → `SHIPPED` → `CONFIRMED` 또는 `CANCELLED`)으로 시뮬레이션 (Q6, ADR-0006) |
+| GitOps 패턴 | App-of-Apps + Sync Wave (플랫폼) + ApplicationSet Git Generator (마이크로서비스, PoC diet — dev 환경만 활성, prod 비활성) |
+| 이벤트 스키마 | **Kafka wire는 JSON 유지** (Q4 (a) 결정, ADR-0003). `msa-common-libs:events` Protobuf 스키마는 코드 양립용으로 보유하되 wire 직렬화에 미사용. wire→Protobuf 마이그레이션은 SemVer breaking change로 추후 별도 트랙 |
+| Kafka 토픽 명명 | **SPEC §9.1 표준 사용** (Q5 (a) 결정, ADR-0004): `order.pending` / `order.inventory-reserved` / `order.confirmed` / `order.cancelled`. 모노레포의 `*-topic` suffix 이름은 변경 |
+| Service mesh / Ingress | **Istio 1.23.3** (Phase 5 정착). istio-base CRD (Wave -5) + istio-cp istiod (Wave -2) + istio-gateway Gateway/VS/PeerAuth/DR + istio-ingressgateway (Wave -1, R-62 분리). 외부 진입 = NLB :80/:443 → istio-ingressgateway NodePort 30080/30443 → api-gateway (R-35 (d) / PR #22). mesh 내부 = mTLS STRICT (PeerAuthentication) |
 | 빌드 toolchain | **Spring Boot 3.5.13** + **Kotlin 2.1.0** + **Gradle 8.10.2** + **JVM 21** 통일. SB 3.5는 2026-06-30 OSS EOL — Phase 6 후 3.6/4.0 마이그레이션 검토. Kotlin 2.3.x + Gradle 9.x는 `BuildUtilKt.clearJarCaches()` JetBrains 버그로 보류 |
-| Spring Cloud (api-gateway) | **Spring Cloud 2025.0.2 (Northfields)** — SB 3.5.13 공식 짝. api-gateway는 **BFF + Spring Cloud Gateway 혼합** (Q1 (c) 결정) — 한 deployable에서 일부 path는 SC Gateway routes로 reverse proxy, 일부는 BFF REST controller가 gRPC client로 백엔드 호출 |
-| `client-redis` 라이브러리 | **JitPack 외부 의존성**: `com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2` (D2 결정). `msa-common-libs:client-redis`는 v0.3.0에서 제거 |
-| `client-ses` 라이브러리 | **제거** (D3 결정). notification 폐기와 일관. `msa-common-libs:client-ses`는 v0.3.0에서 제거 |
-| JWT 검증 | 게이트웨이의 `JwtHeaderCheckFilter`가 `/api/v1/orders/**` 등 보호 경로에서 `auth-service.checkValidity` gRPC 호출로 검증. 모노레포에 기반 코드 존재 |
+| Spring Cloud (api-gateway) | **Spring Cloud 2025.0.2 (Northfields)** — SB 3.5.13 공식 짝. api-gateway는 **BFF + Spring Cloud Gateway 혼합** (Q1 (c) 결정, ADR-0005) — 한 deployable에서 일부 path는 SC Gateway routes로 reverse proxy (`/api/v1/users` + `/admin/v1/orders`, R-50 RequestRateLimiter 적용), 일부는 BFF REST controller가 gRPC client로 백엔드 호출 (`/api/v1/auth/{signup,signin,check}` + `/api/v1/products` + `/api/v1/orders` + `/api/v1/inventories`) |
+| `client-redis` 라이브러리 | **JitPack 외부 의존성**: `com.github.kanei0415:ktcloud-msa-client-redis:v1.0.2` (D2 결정, ADR-0002). `msa-common-libs:client-redis`는 v0.3.0에서 제거 |
+| `client-ses` 라이브러리 | **제거** (D3 결정, ADR-0002). notification 폐기와 일관. `msa-common-libs:client-ses`는 v0.3.0에서 제거 |
+| JWT 검증 | 게이트웨이의 `JwtHeaderCheckFilter`가 보호 경로에서 `auth-service.CheckValidity` gRPC 호출로 검증. JWT secret = AWS Secrets Manager (`troica/auth/jwt-secret`) → ExternalSecret (R-25) → K8s Secret → auth-service / api-gateway pod 의 `JWT_SECRET` ENV 주입 |
+| api-gateway ↔ Service Mesh 책임 분담 | **ADR-0009** — 외부 진입 (north-south) = Istio ingressgateway / 내부 통신 (east-west) = sidecar mTLS / 응용 라우팅 (path 별 backend 호출) = api-gateway BFF + SCG / 인프라 재시도 = Istio VirtualService retries (3 회) / 응용 fallback = Resilience4j Circuit Breaker (`InventoryQueryService`, R-41) / JWT 인증 = api-gateway JwtHeaderCheckFilter |
+| micrometer-registry-prometheus | 6 polyrepo build.gradle.kts 측 `runtimeOnly("io.micrometer:micrometer-registry-prometheus")` (R-65). `/actuator/prometheus` endpoint 활성화 → ServiceMonitor scrape → Grafana 시각화 |
 
 ---
 
@@ -56,7 +58,7 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 
 | # | 레포 명 | 내용 |
 |---|---------|------|
-| 7 | `msa-common-libs` | **멀티모듈 Gradle** 프로젝트. **v0.3.0부터 2개 서브모듈**: `common` (JPA/QueryDSL/예외/유틸) + `events` (Protobuf 스키마). `client-redis`는 팀장님의 JitPack(`com.github.kanei0415:ktcloud-msa-client-redis`)로 일원화, `client-ses`는 notification 폐기와 함께 제거 (D2/D3) |
+| 7 | `msa-common-libs` | **멀티모듈 Gradle** 프로젝트. **v0.3.0부터 2개 서브모듈**: `common` (JPA/QueryDSL/예외/유틸) + `events` (Protobuf 스키마). `client-redis`는 팀장님의 JitPack(`com.github.kanei0415:ktcloud-msa-client-redis`)로 일원화, `client-ses`는 notification 폐기와 함께 제거 (D2/D3). **최신 stable = v0.4.0** (api-gateway WebFlux 측 servlet 제거). 5 service (auth/user/product/inventory/order) 측은 servlet 호환 v0.3.1 유지 |
 
 ### 1.3 GitOps & 인프라 (2개, 기존)
 
@@ -99,70 +101,89 @@ GitHub Organization: `KTCloud-CloudNative-Troica-Team`
 msa-argocd-manifest/
 ├── README.md
 ├── bootstrap/
-│   └── root-app.yaml                       # STEP 3 kubectl apply 대상 — App-of-Apps의 root
+│   ├── root-app.yaml                       # STEP 3 kubectl apply 대상 — App-of-Apps의 root
+│   ├── apps.yaml                           # 3 child Application (app-projects/app-platform/app-applications)
+│   └── README.md
 │
 ├── projects/                               # ArgoCD AppProject CRD
-│   ├── platform-project.yaml
-│   └── market-project.yaml
+│   ├── market-project.yaml
+│   └── platform-project.yaml
 │
 ├── applications/                           # 마이크로서비스 레이어 (ApplicationSet)
-│   ├── appset.yaml                         # Matrix generator: services × envs
+│   ├── appset.yaml                         # Matrix generator: 6 service × env: dev (PoC diet — prod 비활성)
 │   ├── charts/
 │   │   └── microservice/                   # 공통 Helm 차트 (모든 서비스 공유)
 │   │       ├── Chart.yaml
 │   │       ├── values.yaml                 # 차트 기본값
 │   │       └── templates/
 │   │           ├── _helpers.tpl
-│   │           ├── deployment.yaml
+│   │           ├── deployment.yaml         # main + worker (worker.enabled 측 분기)
 │   │           ├── service.yaml
 │   │           ├── hpa.yaml
 │   │           ├── serviceaccount.yaml
-│   │           ├── configmap.yaml
-│   │           └── virtualservice.yaml     # Istio
-│   └── values/                             # 서비스별 + 환경별 values
+│   │           ├── role.yaml               # R-48 RBAC (per-service)
+│   │           ├── pdb.yaml                # R-43 PDB (api: minAvailable=1, worker: maxUnavailable=1)
+│   │           └── servicemonitor.yaml     # R-42 Prometheus scrape
+│   └── values/                             # 서비스별 values (6 service + _template)
+│       ├── _template/                      # AppSet 측 `_*` exclude pattern 으로 제외
+│       ├── api-gateway/                    # values.yaml + values-dev.yaml
+│       ├── auth-service/
 │       ├── user-service/
-│       │   ├── values.yaml                 # 서비스 공통값
-│       │   ├── values-dev.yaml
-│       │   └── values-prod.yaml
 │       ├── product-service/
 │       ├── inventory-service/
-│       ├── order-service/
-│       │   ├── values.yaml                 # worker Deployment는 .Values.worker.enabled 플래그로 분기 (별도 values 파일 없음)
-│       │   ├── values-dev.yaml
-│       │   └── values-prod.yaml
-│       ├── notification-service/
-│       └── api-gateway/
+│       └── order-service/
 │
-└── platform/                               # 플랫폼 레이어 (App-of-Apps + Sync Wave)
-    ├── root.yaml                           # platform Application들의 root
-    ├── 00-cert-manager/
-    │   └── application.yaml                # syncWave: -10
-    ├── 10-istio-base/
-    │   └── application.yaml                # syncWave: -5
-    ├── 11-istio-cp/
-    │   └── application.yaml                # syncWave: -4
-    ├── 30-kube-prometheus-stack/           # Prometheus + AlertManager + Grafana
-    │   ├── application.yaml
-    │   └── values.yaml
-    ├── 30-loki/
-    ├── 30-tempo/
-    ├── 30-mimir/
-    ├── 40-strimzi-operator/                # Kafka operator
-    ├── 40-cnpg-operator/                   # PostgreSQL operator
-    ├── 40-redis-operator/
-    ├── 50-kafka-cluster/                   # Strimzi Kafka CR + KafkaTopic CRs
-    │   ├── kafka.yaml
-    │   └── topics/
-    │       ├── order-pending.yaml
-    │       ├── order-inventory-reserved.yaml
-    │       ├── order-confirmed.yaml
-    │       ├── order-cancelled.yaml
-    │       └── notification-requested.yaml
-    ├── 50-postgres-clusters/               # CNPG Cluster CRs (서비스별)
-    └── 50-redis-cluster/
+├── platform/                               # 플랫폼 레이어 (App-of-Apps + Sync Wave) — 19 Application
+│   ├── root.yaml                           # platform Application들의 root (Wave -10)
+│   ├── 00-cert-manager/application.yaml    # 인증서 (Wave 0)
+│   ├── 05-ebs-csi/application.yaml         # self-managed kubeadm 측 EBS CSI driver (Wave 0)
+│   ├── 05-rbac/application.yaml            # 사람 RBAC ClusterRole + binding (Wave -8, R-48)
+│   ├── 10-istio-base/application.yaml      # Istio CRD (Wave -5, R-03)
+│   ├── 11-istio-cp/application.yaml        # istiod (Wave -2, R-62 분리 후 gateway chart 제거)
+│   ├── 12-istio-gateway/                   # Gateway + VS + PeerAuth + DR + namespace label (Wave -3)
+│   │   ├── application.yaml
+│   │   └── manifests/{gateway, virtualservice, peer-authentication, destination-rule, namespace-injection}.yaml
+│   ├── 13-istio-ingressgateway/application.yaml  # istio-ingressgateway (Wave -1, R-62 PR #118 분리)
+│   ├── 30-kube-prometheus-stack/           # Prometheus + AlertManager + Grafana
+│   │   ├── application.yaml
+│   │   └── dashboards/troica-services.yaml # Grafana dashboard ConfigMap (R-42)
+│   ├── 30-loki/application.yaml            # Loki
+│   ├── 30-tempo/application.yaml           # Tempo
+│   ├── 31-prometheus-rules/application.yaml # AlertManager 측 룰 (R-47 security 라우팅)
+│   ├── 40-cnpg-operator/application.yaml   # CloudNativePG operator (Wave 1)
+│   ├── 40-external-secrets-operator/application.yaml  # ESO (Wave 1, R-25)
+│   ├── 40-strimzi-operator/application.yaml  # Strimzi Kafka operator (Wave 1)
+│   ├── 50-kafka-cluster/                   # Strimzi Kafka CR + KafkaTopic CR (Wave 2)
+│   │   ├── application.yaml
+│   │   └── manifests/{kafka.yaml, topics/{order-pending,order-inventory-reserved,order-confirmed,order-cancelled}.yaml}
+│   ├── 50-postgres-clusters/application.yaml  # CNPG Cluster × 6 (Wave 2)
+│   ├── 50-redis-cluster/application.yaml   # Redis Deployment + Service (Spotahome 제거 후 단순 K8s, PR #105) (Wave 2)
+│   ├── 60-network-policies/                # default-deny + 의도 통신만 allow (Wave 5, R-49)
+│   │   ├── application.yaml
+│   │   └── manifests/{market-dev,market-prod}.yaml
+│   └── 91-external-secrets-config/         # ClusterSecretStore + 24 ExternalSecret (Wave 3, R-25/R-33)
+│       ├── application.yaml
+│       └── manifests/{cluster-secret-store, alertmanager-slack-webhooks, app-bindings-{6 service}, auth-jwt-secret}.yaml
+│
+├── tests/e2e/
+│   └── troica-market-e2e.postman_collection.json   # Newman collection 7 step (R-42)
+│
+├── .github/workflows/
+│   ├── e2e-newman.yml                      # Newman cluster 호출 (R-42, E2E_ENABLED gate)
+│   └── trivy-manifest-scan.yml             # 매니페스트 보안 스캔 (R-46)
+│
+└── docs/
+    ├── TROICA_SPEC.md                      # 본 문서 (단일 진실의 원천)
+    ├── BACKLOG.md                          # Phase별 task 진행 상태
+    ├── TROUBLESHOOTING.md                  # 누적 디버깅 자료
+    ├── PHASE_4_RUNBOOK.md                  # Phase 4 작업 절차 (historical)
+    ├── PROGRESS_LOG.md                     # 컨텍스트 스냅샷
+    ├── PROJECT_PLAN.md                     # 프로젝트 계획서 (구현 반영 갱신본)
+    ├── adr/                                # Architecture Decision Records (11 ADR)
+    └── images/                             # 다이어그램 (AWS-architecture.md / GitOps-flow.md / MSA-services.md + PNG)
 ```
 
-> **Sync Wave 규칙**: 음수일수록 먼저 실행. CRD → operator → 컴포넌트 → 의존 컴포넌트 순. 폴더명 prefix는 시각적 가이드이고 실제 순서는 Application CRD의 `argocd.argoproj.io/sync-wave` annotation으로 강제.
+> **Sync Wave 규칙**: 음수일수록 먼저 실행. CRD → operator → 컴포넌트 → 의존 컴포넌트 순. 폴더명 prefix는 시각적 가이드이고 실제 순서는 Application CRD의 `argocd.argoproj.io/sync-wave` annotation으로 강제. 실 Wave 범위 = `-8` (rbac) ~ `5` (network-policies).
 
 ---
 
@@ -478,15 +499,25 @@ spec:
               revision: main
               directories:
                 - path: applications/values/*
+                - path: applications/values/_*       # _template 등 underscore prefix는 제외
+                  exclude: true
           - list:
               elements:
                 - env: dev
-                - env: prod
+                # PoC memory diet — prod 환경 일시 비활성. 6 service × 2 env = 12
+                # Application → 6 (dev only). 평가 demo 는 market-dev 만 사용.
+                # 운영 단계 진입 시 prod 환경 환원 + 별도 prod 전용 cluster 분리 검토.
+                # - env: prod
   template:
     metadata:
       name: '{{.path.basename}}-{{.env}}'
       labels:
         env: '{{.env}}'
+        service: '{{.path.basename}}'
+      annotations:
+        # platform stateful workload + external secrets + network policies 모두
+        # sync 후 service Application 시작하도록 Wave 10.
+        argocd.argoproj.io/sync-wave: "10"
     spec:
       project: market
       source:
@@ -509,7 +540,7 @@ spec:
           - ServerSideApply=true
 ```
 
-> **검증 포인트**: `applications/values/*` 디렉토리만 추가하면 ApplicationSet이 자동으로 `{서비스명}-dev`, `{서비스명}-prod` 두 Application을 생성한다. 새 서비스 추가 시 ArgoCD 측 작업 0.
+> **검증 포인트**: `applications/values/<service>/` 디렉토리만 추가하면 ApplicationSet이 자동으로 `<서비스명>-dev` Application 생성 (PoC diet — prod 비활성). 운영 단계 진입 시 `- env: prod` 주석 해제 → 자동으로 `-prod` Application 추가. 새 서비스 추가 시 ArgoCD 측 작업 0.
 
 ---
 
