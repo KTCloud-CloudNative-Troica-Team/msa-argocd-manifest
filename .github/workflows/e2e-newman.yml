@@ -4,12 +4,17 @@
 # → 상품/재고 조회 → 주문 생성/조회 → JWT 검증).
 #
 # Trigger
-# - workflow_dispatch: 수동 실행 (cluster up 후 검증 시 1차 사용)
-# - schedule: 매 6 시간 (cluster running 시점만 의미. cluster down 시 fail 은 정상)
+# - workflow_dispatch: 수동 실행 (cluster up 후 검증 시 사용)
 # - paths: collection 자체 변경 시 syntax 검증용 PR build
 #
 # 활성화: Org Variable `E2E_ENABLED=true` 설정. 비활성 상태에서는 모든 step skip
 # 되어 main CI 그린 유지.
+#
+# Schedule (cron) 측 비활성 — PoC 단계 라 cluster 24/7 X. cluster down 시점 측
+# scheduled run 측 매일 fail email 측 noise. 또 default BASE_URL 측 cluster 내부
+# DNS (api-gateway.market-dev.svc.cluster.local) 측 — GitHub Actions runner (인터넷)
+# 측 resolve 불가 → EAI_AGAIN. 운영 단계 측 진입 시 (Phase 6 / R-40 frontend hosting
+# / 영구 자원 측 활성) 측 schedule 측 + NLB DNS Variable 측 재활성.
 
 name: E2E (Newman)
 
@@ -17,16 +22,20 @@ on:
   workflow_dispatch:
     inputs:
       baseUrl:
-        description: "api-gateway 진입점 URL"
+        description: "api-gateway 진입점 URL (예: NLB DNS 측 http://kt-cloud-nlb-XXX.elb.ap-northeast-2.amazonaws.com)"
         required: false
         default: "http://localhost:8100"
   pull_request:
     paths:
       - "tests/e2e/**"
       - ".github/workflows/e2e-newman.yml"
-  schedule:
-    # 매일 KST 10:00 (UTC 01:00) — 영업 시간 진입 직전 smoke check
-    - cron: "0 1 * * *"
+  # schedule:
+  #   # 운영 단계 진입 시 재활성. 매일 KST 10:00 (UTC 01:00) — 영업 시간 직전 smoke check.
+  #   # 재활성 전 필수 작업:
+  #   # 1. Org Variable `E2E_BASE_URL` 측 NLB DNS 측 등록 (매 cluster cycle 측 update)
+  #   # 2. 아래 Run E2E step 측 env BASE_URL default 측 `vars.E2E_BASE_URL` 측 변경
+  #   #    (cluster 내부 DNS 측 GitHub runner 측 resolve 불가)
+  #   - cron: "0 1 * * *"
 
 permissions:
   contents: read
@@ -43,8 +52,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Newman
-        run: npm install -g newman
+      - name: Install Newman + html reporter
+        # html reporter 측 별도 npm 패키지 — newman 측 cli/junit 측 built-in 단 html 측 X.
+        # 누락 시 'could not find html reporter' warning + html report 측 미생성 (cli/junit 측 fallback).
+        run: |
+          npm install -g newman
+          npm install -g newman-reporter-html
 
       # PR build 는 collection JSON 의 구조만 검증 (실 호출 X).
       # cluster 미연결 환경에서 newman run 은 connection refused 로 실패하나
@@ -56,12 +69,13 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('tests/e2e/troica-market-e2e.postman_collection.json'))"
           echo "Collection JSON syntax 정상."
 
-      # 수동 / 스케줄 trigger 만 실 실행. baseUrl 은 workflow_dispatch input 또는
-      # 기본 cluster 내부 service DNS (api-gateway.market-dev) 로 override.
+      # 수동 trigger 만 실 실행. baseUrl 은 workflow_dispatch input 측 (NLB DNS 측 권장).
+      # default 측 localhost:8100 — 의도된 fallback (input 측 누락 시 명확한 fail
+      # 로 사용자 측 NLB DNS 측 input 측 재시도 측 유도).
       - name: Run E2E
         if: github.event_name != 'pull_request'
         env:
-          BASE_URL: ${{ inputs.baseUrl || 'http://api-gateway.market-dev.svc.cluster.local:8100' }}
+          BASE_URL: ${{ inputs.baseUrl || 'http://localhost:8100' }}
         run: |
           newman run tests/e2e/troica-market-e2e.postman_collection.json \
             --env-var "baseUrl=${BASE_URL}" \
